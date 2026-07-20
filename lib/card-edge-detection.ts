@@ -1,16 +1,16 @@
 // Include background around the guideline so edges remain measurable when the
 // card is aligned exactly with the visible frame.
 export const CARD_ANALYSIS_PADDING_RATIO = 0.08;
-export const CARD_SHAPE_ENTER_CONFIDENCE = 0.62;
-export const CARD_SHAPE_EXIT_CONFIDENCE = 0.5;
+export const CARD_SHAPE_ENTER_CONFIDENCE = 0.56;
+export const CARD_SHAPE_EXIT_CONFIDENCE = 0.46;
 export const CARD_PRESENCE_ENTER_CONFIDENCE = 0.54;
 export const CARD_PRESENCE_EXIT_CONFIDENCE = 0.44;
 
 const EDGE_SCAN_INSET_RATIO = 0.14;
 const CORNER_RADIUS_RATIO = 0.055;
 const EDGE_LUMA_DELTA_THRESHOLD = 16;
-const MIN_EDGE_SCORE = 0.42;
-const MIN_CORNER_SCORE = 0.16;
+const MIN_EDGE_SCORE = 0.38;
+const MIN_CORNER_SCORE = 0.12;
 // A visually 80% card measures about 79.8% after the 2px sampling grid.
 const MIN_CAPTURE_SPAN_COVERAGE = 0.79;
 const MIN_PRESENCE_EDGE_SCORE = 0.42;

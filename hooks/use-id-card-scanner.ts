@@ -26,8 +26,9 @@ const SAMPLE_INTERVAL_MS = 1000 / 15;
 // Hand-held phones naturally produce small frame-to-frame luma changes. Use a
 // stricter threshold to enter the ready state and a wider one to leave it, then
 // tolerate a short burst of bad samples so the UI does not flicker.
-const MOTION_ENTER_THRESHOLD = 9;
-const MOTION_EXIT_THRESHOLD = 13;
+const MOTION_ENTER_THRESHOLD = 11;
+const MOTION_EXIT_THRESHOLD = 15;
+const ACQUIRE_MISS_GRACE_FRAMES = 2;
 const READY_MISS_GRACE_FRAMES = 5;
 
 type CameraState = "idle" | "requesting" | "ready" | "error";
@@ -152,8 +153,8 @@ function getSourceRect(video: HTMLVideoElement, roi: HTMLElement): SourceRect | 
 export function useIdCardScanner({
   videoRef,
   roiRef,
-  stableFrames = 8,
-  minimumStableMs = 500,
+  stableFrames = 4,
+  minimumStableMs = 180,
   jpegQuality = 0.85,
 }: ScannerOptions) {
   const [cameraState, setCameraState] = useState<CameraState>("idle");
@@ -170,6 +171,7 @@ export function useIdCardScanner({
   const lastSampleAtRef = useRef(0);
   const stableSinceRef = useRef<number | null>(null);
   const stableFrameCountRef = useRef(0);
+  const acquireMissCountRef = useRef(0);
   const readyMissCountRef = useRef(0);
   const hasDetectedCardRef = useRef(false);
   const hasCardShapeRef = useRef(false);
@@ -194,6 +196,7 @@ export function useIdCardScanner({
     analysisCanvasRef.current = null;
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
+    acquireMissCountRef.current = 0;
     readyMissCountRef.current = 0;
     hasDetectedCardRef.current = false;
     hasCardShapeRef.current = false;
@@ -359,6 +362,7 @@ export function useIdCardScanner({
       let isCaptureReady = wasCaptureReady;
 
       if (isCandidate) {
+        acquireMissCountRef.current = 0;
         readyMissCountRef.current = 0;
         if (!wasCaptureReady) {
           stableFrameCountRef.current += 1;
@@ -370,6 +374,15 @@ export function useIdCardScanner({
             stableDuration >= minimumStableMs;
         }
       } else if (
+        !wasCaptureReady &&
+        stableFrameCountRef.current > 0 &&
+        acquireMissCountRef.current < ACQUIRE_MISS_GRACE_FRAMES
+      ) {
+        // Ignore one or two noisy samples while acquiring so a tiny hand
+        // tremor does not restart the short readiness timer.
+        acquireMissCountRef.current += 1;
+        isCaptureReady = false;
+      } else if (
         wasCaptureReady &&
         readyMissCountRef.current < READY_MISS_GRACE_FRAMES
       ) {
@@ -380,6 +393,7 @@ export function useIdCardScanner({
       } else {
         stableFrameCountRef.current = 0;
         stableSinceRef.current = null;
+        acquireMissCountRef.current = 0;
         readyMissCountRef.current = 0;
         isCaptureReady = false;
       }
@@ -458,6 +472,7 @@ export function useIdCardScanner({
     currentLumaRef.current = null;
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
+    acquireMissCountRef.current = 0;
     readyMissCountRef.current = 0;
     hasDetectedCardRef.current = false;
     hasCardShapeRef.current = false;
