@@ -224,12 +224,20 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
               ภาพบัตรชัดเจนและมีข้อมูลครบถ้วน
             </p>
 
-            <img
-              src={capturedImage}
-              alt="ภาพบัตรจากจังหวะที่กดถ่าย"
-              className="mx-auto mt-6 max-h-[56dvh] w-full max-w-sm rounded-2xl border border-emerald-400/35 bg-black object-contain shadow-2xl"
-              style={{ aspectRatio: 1 / ID_CARD_ASPECT_RATIO }}
-            />
+            <div
+              className="relative mx-auto mt-6 w-full max-w-sm overflow-hidden rounded-2xl border border-emerald-400/35 bg-black shadow-2xl"
+              style={{ aspectRatio: ID_CARD_ASPECT_RATIO }}
+            >
+              <img
+                src={capturedImage}
+                alt="ภาพบัตรจากจังหวะที่กดถ่าย หมุนไปทางซ้าย 90 องศา"
+                className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 -rotate-90 object-cover"
+                style={{
+                  width: `${100 / ID_CARD_ASPECT_RATIO}%`,
+                  height: `${ID_CARD_ASPECT_RATIO * 100}%`,
+                }}
+              />
+            </div>
           </div>
 
           <button
