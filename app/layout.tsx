@@ -5,6 +5,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ID Card Scanner",
   description: "Lightweight client-side ID card capture",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export const viewport: Viewport = {
@@ -15,5 +20,10 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  return <html lang="th"><body>{children}</body></html>;
+  return (
+    <html lang="th">
+      {/* Grammarly injects attributes directly on body before React hydrates. */}
+      <body suppressHydrationWarning>{children}</body>
+    </html>
+  );
 }

@@ -7,38 +7,26 @@ import {
   useRef,
   useState,
 } from "react";
+import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
 
-const ANALYSIS_WIDTH = 240;
-const CARD_ASPECT_RATIO = 1.586;
-const ANALYSIS_HEIGHT = Math.round(ANALYSIS_WIDTH / CARD_ASPECT_RATIO);
+// The current guideline is the landscape ID-1 frame rotated 90°, so analysis
+// and capture follow its portrait-oriented bounding box.
+const ANALYSIS_HEIGHT = 240;
+const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT / ID_CARD_ASPECT_RATIO);
 const SAMPLE_INTERVAL_MS = 1000 / 15;
 
 type CameraState = "idle" | "requesting" | "ready" | "error";
 export type DetectionState = "searching" | "hold-still" | "stable";
 
-export type DetectionMetrics = {
-  motion: number;
-  edgeDensity: number;
-  lumaVariance: number;
-  progress: number;
-};
-
 type ScannerOptions = {
   videoRef: RefObject<HTMLVideoElement | null>;
-  roiRef: RefObject<HTMLDivElement | null>;
+  roiRef: RefObject<HTMLElement | null>;
   stableFrames?: number;
   minimumStableMs?: number;
   jpegQuality?: number;
 };
 
 type SourceRect = { sx: number; sy: number; sw: number; sh: number };
-
-const EMPTY_METRICS: DetectionMetrics = {
-  motion: 0,
-  edgeDensity: 0,
-  lumaVariance: 0,
-  progress: 0,
-};
 
 function cameraErrorMessage(error: unknown): string {
   if (!(error instanceof DOMException)) {
@@ -137,7 +125,6 @@ export function useIdCardScanner({
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectionState, setDetectionState] = useState<DetectionState>("searching");
-  const [metrics, setMetrics] = useState<DetectionMetrics>(EMPTY_METRICS);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -147,9 +134,9 @@ export function useIdCardScanner({
   const currentLumaRef = useRef<Uint8Array | null>(null);
   const sourceRectRef = useRef<SourceRect | null>(null);
   const lastSampleAtRef = useRef(0);
-  const lastMetricsPublishAtRef = useRef(0);
   const stableSinceRef = useRef<number | null>(null);
   const stableFrameCountRef = useRef(0);
+  const isCaptureReadyRef = useRef(false);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
   const cameraRequestIdRef = useRef(0);
@@ -168,12 +155,13 @@ export function useIdCardScanner({
     currentLumaRef.current = null;
     sourceRectRef.current = null;
     analysisCanvasRef.current = null;
+    isCaptureReadyRef.current = false;
   }, [videoRef]);
 
   const capture = useCallback(() => {
     const video = videoRef.current;
     const rect = sourceRectRef.current;
-    if (!video || !rect || capturedRef.current) return;
+    if (!video || !rect || capturedRef.current || !isCaptureReadyRef.current) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(rect.sw);
@@ -291,39 +279,20 @@ export function useIdCardScanner({
       }
 
       const stableDuration = stableSinceRef.current === null ? 0 : now - stableSinceRef.current;
-      const progress = Math.min(
-        1,
-        stableFrameCountRef.current / stableFrames,
-        stableDuration / minimumStableMs,
-      );
+      const isCaptureReady =
+        stableFrameCountRef.current >= stableFrames && stableDuration >= minimumStableMs;
+      isCaptureReadyRef.current = isCaptureReady;
       const nextState: DetectionState = !hasCardDetails
         ? "searching"
-        : isMotionStable
+        : isCaptureReady
           ? "stable"
           : "hold-still";
 
       setDetectionState((currentState) =>
         currentState === nextState ? currentState : nextState,
       );
-      // Metrics are UI/debug data; publishing at 5 fps avoids 15 React renders/sec.
-      if (now - lastMetricsPublishAtRef.current >= 200 || progress === 1) {
-        lastMetricsPublishAtRef.current = now;
-        setMetrics({
-          motion: Number.isFinite(motion) ? motion : 0,
-          edgeDensity,
-          lumaVariance: variance,
-          progress,
-        });
-      }
-
-      if (
-        stableFrameCountRef.current >= stableFrames &&
-        stableDuration >= minimumStableMs
-      ) {
-        capture();
-      }
     },
-    [capture, minimumStableMs, roiRef, stableFrames, videoRef],
+    [minimumStableMs, roiRef, stableFrames, videoRef],
   );
 
   const startDetectionLoop = useCallback(() => {
@@ -384,9 +353,9 @@ export function useIdCardScanner({
     currentLumaRef.current = null;
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
+    isCaptureReadyRef.current = false;
     setCapturedImage(null);
     setDetectionState("searching");
-    setMetrics(EMPTY_METRICS);
   }, []);
 
   useEffect(() => {
@@ -398,8 +367,8 @@ export function useIdCardScanner({
     cameraState,
     cameraError,
     detectionState,
-    metrics,
     capturedImage,
+    capturePhoto: capture,
     retryCapture,
     retryCamera: startCamera,
     stopCamera,
