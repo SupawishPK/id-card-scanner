@@ -11,6 +11,14 @@ npm run dev
 
 Open `http://localhost:3000`. Camera access requires `https://` in production (localhost is allowed by browsers).
 
+## GitHub Pages
+
+Pushes to `main` automatically build and deploy the static export to:
+
+`https://supawishpk.github.io/id-card-scanner/`
+
+The workflow supplies `NEXT_PUBLIC_BASE_PATH=/id-card-scanner`, runs the type check and static build, then publishes `out/` through GitHub Pages Actions. In repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**.
+
 ## Integration
 
 ```tsx
