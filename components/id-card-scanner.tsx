@@ -12,18 +12,26 @@ type IdCardScannerProps = {
   className?: string;
 };
 
-const STATUS_TEXT: Record<DetectionState, string> = {
-  searching: "วางบัตรให้ตรงกรอบ",
-  "card-detected": "จัดบัตรให้พอดีกรอบ",
-  "hold-still": "ถือบัตรให้นิ่งสักครู่",
-  stable: "ตำแหน่งดีแล้ว กดปุ่มถ่ายรูป",
-};
-
-const STATUS_DOT_CLASS: Record<DetectionState, string> = {
-  searching: "bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]",
-  "card-detected": "bg-rose-400 shadow-[0_0_8px_#fb7185]",
-  "hold-still": "bg-rose-400 shadow-[0_0_8px_#fb7185]",
-  stable: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
+const STATUS_UI: Record<
+  DetectionState,
+  { text: string; dotClassName: string }
+> = {
+  searching: {
+    text: "วางบัตรให้ตรงกรอบ",
+    dotClassName: "bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]",
+  },
+  "card-detected": {
+    text: "จัดบัตรให้พอดีกรอบ",
+    dotClassName: "bg-rose-400 shadow-[0_0_8px_#fb7185]",
+  },
+  "hold-still": {
+    text: "ถือบัตรให้นิ่งสักครู่",
+    dotClassName: "bg-rose-400 shadow-[0_0_8px_#fb7185]",
+  },
+  stable: {
+    text: "ตำแหน่งดีแล้ว กดปุ่มถ่ายรูป",
+    dotClassName: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
+  },
 };
 
 const MOCK_VALIDATION_DELAY_MS = 1800;
@@ -46,6 +54,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
+  const statusUi = STATUS_UI[detectionState];
 
   useEffect(() => {
     if (!capturedImage) return;
@@ -105,9 +114,9 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
           <div className="absolute -top-14 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-center text-sm font-medium text-white shadow-lg backdrop-blur-md">
             <span
-              className={`mr-2 inline-block size-2.5 rounded-full ${STATUS_DOT_CLASS[detectionState]}`}
+              className={`mr-2 inline-block size-2.5 rounded-full ${statusUi.dotClassName}`}
             />
-            {STATUS_TEXT[detectionState]}
+            {statusUi.text}
           </div>
 
         </div>

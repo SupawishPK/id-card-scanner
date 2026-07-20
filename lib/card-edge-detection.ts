@@ -1,47 +1,88 @@
-// Include background around the guideline so edges remain measurable when the
-// card is aligned exactly with the visible frame.
-export const CARD_ANALYSIS_PADDING_RATIO = 0.08;
-export const CARD_SHAPE_ENTER_CONFIDENCE = 0.56;
-export const CARD_SHAPE_EXIT_CONFIDENCE = 0.46;
-export const CARD_PRESENCE_ENTER_CONFIDENCE = 0.54;
-export const CARD_PRESENCE_EXIT_CONFIDENCE = 0.44;
+export const CARD_DETECTION_CONFIG = {
+  // Background padding keeps edges measurable when the card matches the guide.
+  analysisPaddingRatio: 0.08,
+  presenceConfidence: { enter: 0.54, exit: 0.44 },
+  captureConfidence: { enter: 0.56, exit: 0.46 },
+} as const;
 
 const EDGE_SCAN_INSET_RATIO = 0.14;
 const CORNER_RADIUS_RATIO = 0.055;
 const EDGE_LUMA_DELTA_THRESHOLD = 16;
-const MIN_EDGE_SCORE = 0.38;
-const MIN_CORNER_SCORE = 0.12;
-// A visually 80% card measures about 79.8% after the 2px sampling grid.
-const MIN_CAPTURE_SPAN_COVERAGE = 0.79;
-const MIN_PRESENCE_EDGE_SCORE = 0.42;
-const MIN_PRESENCE_CORNER_SCORE = 0.12;
-// Presence is intentionally permissive; capture readiness remains at 80%.
-const MIN_PRESENCE_SPAN_COVERAGE = 0.23;
+
+const PRESENCE_RULES = {
+  minEdgeScore: 0.42,
+  minCornerScore: 0.12,
+  minAspectScore: 0.48,
+  minSpanCoverage: 0.23,
+  maxSpanCoverage: 1.08,
+} as const;
+
+const RELAXED_PRESENCE_RULES = {
+  minEdgeScore: 0.4,
+  minCornerScore: 0.08,
+  minAspectScore: 0.38,
+  minSpanCoverage: 0.2,
+  maxSpanCoverage: 1.12,
+} as const;
+
+const CAPTURE_RULES = {
+  minEdgeScore: 0.38,
+  minCornerScore: 0.12,
+  minAspectScore: 0.5,
+  // A visually 80% card measures about 79.8% on the 2px sampling grid.
+  minSpanCoverage: 0.79,
+  maxSpanCoverage: 1.04,
+  outerTolerance: 0.02,
+} as const;
+
+const RELAXED_CAPTURE_RULES = {
+  minEdgeScore: 0.36,
+  minCornerScore: 0.1,
+  minAspectScore: 0.4,
+  minSpanCoverage: 0.74,
+  maxSpanCoverage: 1.08,
+  outerTolerance: 0.035,
+} as const;
 
 type EdgeMeasurement = {
   score: number;
   position: number;
 };
 
-export type CardShapeMetrics = {
-  edgeScores: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
-  cornerScores: {
-    topLeft: number;
-    topRight: number;
-    bottomRight: number;
-    bottomLeft: number;
-  };
+type CardEdges = {
+  top: EdgeMeasurement;
+  right: EdgeMeasurement;
+  bottom: EdgeMeasurement;
+  left: EdgeMeasurement;
+};
+
+type EdgeScores = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+type CornerScores = {
+  topLeft: number;
+  topRight: number;
+  bottomRight: number;
+  bottomLeft: number;
+};
+
+type GeometryMetrics = {
+  edgeScores: EdgeScores;
+  cornerScores: CornerScores;
   interiorBackgroundContrast: number;
+  contrastScore: number;
   aspectScore: number;
-  coverageScore: number;
-  cardShapeConfidence: number;
-  meetsMinimumGeometry: boolean;
-  meetsRelaxedGeometry: boolean;
+  widthCoverage: number;
+  heightCoverage: number;
+  spanCoverage: number;
+  averageEdgeScore: number;
+  averageCornerScore: number;
+  minimumEdgeScore: number;
+  minimumCornerScore: number;
 };
 
 export type CardPresenceMetrics = {
@@ -52,6 +93,17 @@ export type CardPresenceMetrics = {
   minimumCornerScore: number;
   meetsMinimumCard: boolean;
   meetsRelaxedCard: boolean;
+};
+
+export type CaptureAlignmentMetrics = {
+  edgeScores: EdgeScores;
+  cornerScores: CornerScores;
+  interiorBackgroundContrast: number;
+  aspectScore: number;
+  coverageScore: number;
+  captureConfidence: number;
+  meetsMinimumGeometry: boolean;
+  meetsRelaxedGeometry: boolean;
 };
 
 function clamp01(value: number) {
@@ -82,18 +134,18 @@ function scoreEdgePositions(
     0,
     positionSquaredSum / positionCount - mean * mean,
   );
-  const standardDeviation = Math.sqrt(variance);
   const support = positionCount / scanlines;
-  const alignment = clamp01(1 - standardDeviation / Math.max(1, bandWidth * 0.45));
-  const directionConsistency = Math.max(
+  const alignment = clamp01(
+    1 - Math.sqrt(variance) / Math.max(1, bandWidth * 0.45),
+  );
+  const consistentDirections = Math.max(
     positiveDirectionCount,
     positionCount - positiveDirectionCount,
-  ) / positionCount;
-  const directionScore = clamp01((directionConsistency - 0.5) * 2);
+  );
+  const directionScore = clamp01((consistentDirections / positionCount - 0.5) * 2);
 
   return {
-    // Random texture can create edge pixels, but it will not align into one
-    // continuous side. Weight alignment more heavily than raw support.
+    // Random texture creates gradients, but not one straight, consistent side.
     score: support * (0.08 + alignment * 0.72 + directionScore * 0.2),
     position: mean / dimension,
   };
@@ -117,6 +169,7 @@ function measureVerticalEdge(
   const yStart = Math.max(0, alignUp(height * scanStartRatio, step));
   const yEnd = Math.min(height - 1, alignDown(height * scanEndRatio, step));
   if (xEnd < xStart || yEnd < yStart) return { score: 0, position: 0 };
+
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
@@ -127,6 +180,7 @@ function measureVerticalEdge(
     let strongestDelta = 0;
     let strongestSignedDelta = 0;
     let strongestPosition = xStart;
+
     for (let x = xStart; x <= xEnd; x += step) {
       const signedDelta =
         luma[y * width + x + step] - luma[y * width + x - step];
@@ -137,6 +191,7 @@ function measureVerticalEdge(
         strongestPosition = x;
       }
     }
+
     if (strongestDelta >= EDGE_LUMA_DELTA_THRESHOLD) {
       positionCount += 1;
       positionSum += strongestPosition;
@@ -175,6 +230,7 @@ function measureHorizontalEdge(
   const xStart = Math.max(0, alignUp(width * scanStartRatio, step));
   const xEnd = Math.min(width - 1, alignDown(width * scanEndRatio, step));
   if (yEnd < yStart || xEnd < xStart) return { score: 0, position: 0 };
+
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
@@ -185,6 +241,7 @@ function measureHorizontalEdge(
     let strongestDelta = 0;
     let strongestSignedDelta = 0;
     let strongestPosition = yStart;
+
     for (let y = yStart; y <= yEnd; y += step) {
       const signedDelta =
         luma[(y + step) * width + x] - luma[(y - step) * width + x];
@@ -195,6 +252,7 @@ function measureHorizontalEdge(
         strongestPosition = y;
       }
     }
+
     if (strongestDelta >= EDGE_LUMA_DELTA_THRESHOLD) {
       positionCount += 1;
       positionSum += strongestPosition;
@@ -271,18 +329,46 @@ function measureCorner(
   return Math.sqrt(verticalScore * horizontalScore);
 }
 
+function measureCorners(
+  luma: Uint8Array,
+  width: number,
+  height: number,
+  edges: CardEdges,
+  step: number,
+): CornerScores {
+  const { top, right, bottom, left } = edges;
+  return {
+    topLeft: measureCorner(luma, width, height, left.position, top.position, step),
+    topRight: measureCorner(luma, width, height, right.position, top.position, step),
+    bottomRight: measureCorner(
+      luma,
+      width,
+      height,
+      right.position,
+      bottom.position,
+      step,
+    ),
+    bottomLeft: measureCorner(
+      luma,
+      width,
+      height,
+      left.position,
+      bottom.position,
+      step,
+    ),
+  };
+}
+
 function measureInteriorBackgroundContrast(
   luma: Uint8Array,
   width: number,
   height: number,
-  leftEdge: number,
-  rightEdge: number,
-  topEdge: number,
-  bottomEdge: number,
+  edges: CardEdges,
   step: number,
 ) {
   const interiorInset = 0.025;
   const backgroundInset = 0.012;
+  const { top, right, bottom, left } = edges;
   let interiorSum = 0;
   let interiorSamples = 0;
   let backgroundSum = 0;
@@ -294,15 +380,15 @@ function measureInteriorBackgroundContrast(
       const xRatio = x / width;
       const value = luma[y * width + x];
       const isInterior =
-        xRatio > leftEdge + interiorInset &&
-        xRatio < rightEdge - interiorInset &&
-        yRatio > topEdge + interiorInset &&
-        yRatio < bottomEdge - interiorInset;
+        xRatio > left.position + interiorInset &&
+        xRatio < right.position - interiorInset &&
+        yRatio > top.position + interiorInset &&
+        yRatio < bottom.position - interiorInset;
       const isBackground =
-        xRatio < leftEdge - backgroundInset ||
-        xRatio > rightEdge + backgroundInset ||
-        yRatio < topEdge - backgroundInset ||
-        yRatio > bottomEdge + backgroundInset;
+        xRatio < left.position - backgroundInset ||
+        xRatio > right.position + backgroundInset ||
+        yRatio < top.position - backgroundInset ||
+        yRatio > bottom.position + backgroundInset;
 
       if (isInterior) {
         interiorSum += value;
@@ -320,6 +406,103 @@ function measureInteriorBackgroundContrast(
   );
 }
 
+function analyzeGeometry(
+  luma: Uint8Array,
+  width: number,
+  height: number,
+  edges: CardEdges,
+  expectedSpan: number,
+  aspectTolerance: number,
+  step: number,
+): GeometryMetrics {
+  const edgeScores = {
+    top: edges.top.score,
+    right: edges.right.score,
+    bottom: edges.bottom.score,
+    left: edges.left.score,
+  };
+  const cornerScores = measureCorners(luma, width, height, edges, step);
+  const detectedWidth = Math.max(0, edges.right.position - edges.left.position) *
+    width;
+  const detectedHeight = Math.max(0, edges.bottom.position - edges.top.position) *
+    height;
+  const detectedAspect = detectedHeight ? detectedWidth / detectedHeight : 0;
+  const expectedAspect = width / height;
+  const aspectError = detectedAspect
+    ? Math.abs(Math.log(detectedAspect / expectedAspect))
+    : Number.POSITIVE_INFINITY;
+  const interiorBackgroundContrast = measureInteriorBackgroundContrast(
+    luma,
+    width,
+    height,
+    edges,
+    step,
+  );
+
+  return {
+    edgeScores,
+    cornerScores,
+    interiorBackgroundContrast,
+    contrastScore: clamp01((interiorBackgroundContrast - 4) / 20),
+    aspectScore: clamp01(1 - aspectError / aspectTolerance),
+    widthCoverage: detectedWidth / (width * expectedSpan),
+    heightCoverage: detectedHeight / (height * expectedSpan),
+    spanCoverage: Math.min(
+      detectedWidth / (width * expectedSpan),
+      detectedHeight / (height * expectedSpan),
+    ),
+    averageEdgeScore:
+      (edgeScores.top + edgeScores.right + edgeScores.bottom + edgeScores.left) /
+      4,
+    averageCornerScore:
+      (cornerScores.topLeft +
+        cornerScores.topRight +
+        cornerScores.bottomRight +
+        cornerScores.bottomLeft) /
+      4,
+    minimumEdgeScore: Math.min(
+      edgeScores.top,
+      edgeScores.right,
+      edgeScores.bottom,
+      edgeScores.left,
+    ),
+    minimumCornerScore: Math.min(
+      cornerScores.topLeft,
+      cornerScores.topRight,
+      cornerScores.bottomRight,
+      cornerScores.bottomLeft,
+    ),
+  };
+}
+
+function passesCoverageRules(
+  metrics: GeometryMetrics,
+  rules: {
+    minEdgeScore: number;
+    minCornerScore: number;
+    minAspectScore: number;
+    minSpanCoverage: number;
+    maxSpanCoverage: number;
+  },
+) {
+  return (
+    metrics.minimumEdgeScore >= rules.minEdgeScore &&
+    metrics.minimumCornerScore >= rules.minCornerScore &&
+    metrics.aspectScore >= rules.minAspectScore &&
+    metrics.widthCoverage >= rules.minSpanCoverage &&
+    metrics.heightCoverage >= rules.minSpanCoverage &&
+    metrics.widthCoverage <= rules.maxSpanCoverage &&
+    metrics.heightCoverage <= rules.maxSpanCoverage
+  );
+}
+
+function guidelineEdges() {
+  const near =
+    CARD_DETECTION_CONFIG.analysisPaddingRatio /
+    (1 + CARD_DETECTION_CONFIG.analysisPaddingRatio * 2);
+  return { near, far: 1 - near, span: 1 - near * 2 };
+}
+
 /** Detects a plausible ID-1 rectangle anywhere inside the guideline. */
 export function detectCardPresence(
   luma: Uint8Array,
@@ -327,371 +510,162 @@ export function detectCardPresence(
   height: number,
   step = 2,
 ): CardPresenceMetrics {
-  const guidelineNearEdge =
-    CARD_ANALYSIS_PADDING_RATIO / (1 + CARD_ANALYSIS_PADDING_RATIO * 2);
-  const guidelineFarEdge = 1 - guidelineNearEdge;
-  const searchOuterEdge = Math.max(0.02, guidelineNearEdge - 0.025);
+  const guide = guidelineEdges();
+  const searchOuterEdge = Math.max(0.02, guide.near - 0.025);
+  const coarseEdges: CardEdges = {
+    left: measureVerticalEdge(luma, width, height, searchOuterEdge, 0.46, step),
+    right: measureVerticalEdge(
+      luma,
+      width,
+      height,
+      0.54,
+      1 - searchOuterEdge,
+      step,
+    ),
+    top: measureHorizontalEdge(luma, width, height, searchOuterEdge, 0.46, step),
+    bottom: measureHorizontalEdge(
+      luma,
+      width,
+      height,
+      0.54,
+      1 - searchOuterEdge,
+      step,
+    ),
+  };
 
-  const coarseLeft = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    searchOuterEdge,
-    0.46,
-    step,
-  );
-  const coarseRight = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    0.54,
-    1 - searchOuterEdge,
-    step,
-  );
-  const coarseTop = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    searchOuterEdge,
-    0.46,
-    step,
-  );
-  const coarseBottom = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    0.54,
-    1 - searchOuterEdge,
-    step,
-  );
-
-  // The coarse pass finds approximate bounds over the whole ROI. Re-score each
-  // side only across the detected card span so a small but continuous edge is
-  // not penalized merely because it occupies fewer global scanlines.
+  // Re-score each side only over the detected card span. This lets a small,
+  // continuous side score well without making random full-frame texture pass.
   const refinementBand = 0.04;
   const spanInset = 0.018;
-  const left = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    coarseLeft.position - refinementBand,
-    coarseLeft.position + refinementBand,
-    step,
-    coarseTop.position + spanInset,
-    coarseBottom.position - spanInset,
-  );
-  const right = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    coarseRight.position - refinementBand,
-    coarseRight.position + refinementBand,
-    step,
-    coarseTop.position + spanInset,
-    coarseBottom.position - spanInset,
-  );
-  const top = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    coarseTop.position - refinementBand,
-    coarseTop.position + refinementBand,
-    step,
-    coarseLeft.position + spanInset,
-    coarseRight.position - spanInset,
-  );
-  const bottom = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    coarseBottom.position - refinementBand,
-    coarseBottom.position + refinementBand,
-    step,
-    coarseLeft.position + spanInset,
-    coarseRight.position - spanInset,
-  );
-
-  const detectedWidth = Math.max(0, right.position - left.position) * width;
-  const detectedHeight = Math.max(0, bottom.position - top.position) * height;
-  const detectedAspect = detectedHeight ? detectedWidth / detectedHeight : 0;
-  const expectedAspect = width / height;
-  const aspectError = detectedAspect
-    ? Math.abs(Math.log(detectedAspect / expectedAspect))
-    : Number.POSITIVE_INFINITY;
-  const aspectScore = clamp01(1 - aspectError / 0.18);
-  const guidelineSpan = guidelineFarEdge - guidelineNearEdge;
-  const widthCoverage = detectedWidth / (width * guidelineSpan);
-  const heightCoverage = detectedHeight / (height * guidelineSpan);
-  const spanCoverage = Math.min(widthCoverage, heightCoverage);
-
-  const topLeft = measureCorner(
-    luma,
-    width,
-    height,
-    left.position,
-    top.position,
-    step,
-  );
-  const topRight = measureCorner(
-    luma,
-    width,
-    height,
-    right.position,
-    top.position,
-    step,
-  );
-  const bottomRight = measureCorner(
-    luma,
-    width,
-    height,
-    right.position,
-    bottom.position,
-    step,
-  );
-  const bottomLeft = measureCorner(
-    luma,
-    width,
-    height,
-    left.position,
-    bottom.position,
-    step,
-  );
-  const interiorBackgroundContrast = measureInteriorBackgroundContrast(
-    luma,
-    width,
-    height,
-    left.position,
-    right.position,
-    top.position,
-    bottom.position,
-    step,
-  );
-  const contrastScore = clamp01((interiorBackgroundContrast - 4) / 20);
-  const averageEdgeScore = (top.score + right.score + bottom.score + left.score) / 4;
-  const averageCornerScore =
-    (topLeft + topRight + bottomRight + bottomLeft) / 4;
+  const edges: CardEdges = {
+    left: measureVerticalEdge(
+      luma,
+      width,
+      height,
+      coarseEdges.left.position - refinementBand,
+      coarseEdges.left.position + refinementBand,
+      step,
+      coarseEdges.top.position + spanInset,
+      coarseEdges.bottom.position - spanInset,
+    ),
+    right: measureVerticalEdge(
+      luma,
+      width,
+      height,
+      coarseEdges.right.position - refinementBand,
+      coarseEdges.right.position + refinementBand,
+      step,
+      coarseEdges.top.position + spanInset,
+      coarseEdges.bottom.position - spanInset,
+    ),
+    top: measureHorizontalEdge(
+      luma,
+      width,
+      height,
+      coarseEdges.top.position - refinementBand,
+      coarseEdges.top.position + refinementBand,
+      step,
+      coarseEdges.left.position + spanInset,
+      coarseEdges.right.position - spanInset,
+    ),
+    bottom: measureHorizontalEdge(
+      luma,
+      width,
+      height,
+      coarseEdges.bottom.position - refinementBand,
+      coarseEdges.bottom.position + refinementBand,
+      step,
+      coarseEdges.left.position + spanInset,
+      coarseEdges.right.position - spanInset,
+    ),
+  };
+  const metrics = analyzeGeometry(luma, width, height, edges, guide.span, 0.18, step);
   const coverageConfidence = clamp01(
-    (spanCoverage - MIN_PRESENCE_SPAN_COVERAGE) / 0.35,
+    (metrics.spanCoverage - PRESENCE_RULES.minSpanCoverage) / 0.35,
   );
   const cardPresenceConfidence = clamp01(
-    averageEdgeScore * 0.42 +
-      averageCornerScore * 0.23 +
-      aspectScore * 0.18 +
-      contrastScore * 0.1 +
+    metrics.averageEdgeScore * 0.42 +
+      metrics.averageCornerScore * 0.23 +
+      metrics.aspectScore * 0.18 +
+      metrics.contrastScore * 0.1 +
       coverageConfidence * 0.07,
-  );
-  const minimumEdgeScore = Math.min(
-    top.score,
-    right.score,
-    bottom.score,
-    left.score,
-  );
-  const minimumCornerScore = Math.min(
-    topLeft,
-    topRight,
-    bottomRight,
-    bottomLeft,
   );
 
   return {
     cardPresenceConfidence,
-    spanCoverage,
-    aspectScore,
-    minimumEdgeScore,
-    minimumCornerScore,
-    meetsMinimumCard:
-      minimumEdgeScore >= MIN_PRESENCE_EDGE_SCORE &&
-      minimumCornerScore >= MIN_PRESENCE_CORNER_SCORE &&
-      aspectScore >= 0.48 &&
-      spanCoverage >= MIN_PRESENCE_SPAN_COVERAGE &&
-      widthCoverage <= 1.08 &&
-      heightCoverage <= 1.08,
-    meetsRelaxedCard:
-      minimumEdgeScore >= 0.4 &&
-      minimumCornerScore >= 0.08 &&
-      aspectScore >= 0.38 &&
-      spanCoverage >= 0.2 &&
-      widthCoverage <= 1.12 &&
-      heightCoverage <= 1.12,
+    spanCoverage: metrics.spanCoverage,
+    aspectScore: metrics.aspectScore,
+    minimumEdgeScore: metrics.minimumEdgeScore,
+    minimumCornerScore: metrics.minimumCornerScore,
+    meetsMinimumCard: passesCoverageRules(metrics, PRESENCE_RULES),
+    meetsRelaxedCard: passesCoverageRules(metrics, RELAXED_PRESENCE_RULES),
   };
 }
 
-/** Produces a model-free confidence score for a card aligned to the ROI. */
-export function detectCardShape(
+function isInsideGuide(
+  edges: CardEdges,
+  near: number,
+  far: number,
+  tolerance: number,
+) {
+  return (
+    edges.left.position >= near - tolerance &&
+    edges.right.position <= far + tolerance &&
+    edges.top.position >= near - tolerance &&
+    edges.bottom.position <= far + tolerance
+  );
+}
+
+/** Scores whether a detected card is large and aligned enough to capture. */
+export function detectCaptureAlignment(
   luma: Uint8Array,
   width: number,
   height: number,
   step = 2,
-): CardShapeMetrics {
-  const expectedNearEdge =
-    CARD_ANALYSIS_PADDING_RATIO / (1 + CARD_ANALYSIS_PADDING_RATIO * 2);
-  const expectedFarEdge = 1 - expectedNearEdge;
-  const expectedSpan = expectedFarEdge - expectedNearEdge;
-  const outerTolerance = 0.02;
-  const innerSearchAllowance = expectedSpan * 0.12;
-  // Search inward far enough to accept a centered card covering 80% of the
-  // guideline, but only slightly outside so oversized cards remain rejected.
-  const nearStart = Math.max(0, expectedNearEdge - outerTolerance);
-  const nearEnd = expectedNearEdge + innerSearchAllowance;
-  const farStart = expectedFarEdge - innerSearchAllowance;
-  const farEnd = Math.min(1, expectedFarEdge + outerTolerance);
-
-  const top = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    nearStart,
-    nearEnd,
-    step,
-  );
-  const right = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    farStart,
-    farEnd,
-    step,
-  );
-  const bottom = measureHorizontalEdge(
-    luma,
-    width,
-    height,
-    farStart,
-    farEnd,
-    step,
-  );
-  const left = measureVerticalEdge(
-    luma,
-    width,
-    height,
-    nearStart,
-    nearEnd,
-    step,
-  );
-
-  const topLeft = measureCorner(
-    luma,
-    width,
-    height,
-    left.position,
-    top.position,
-    step,
-  );
-  const topRight = measureCorner(
-    luma,
-    width,
-    height,
-    right.position,
-    top.position,
-    step,
-  );
-  const bottomRight = measureCorner(
-    luma,
-    width,
-    height,
-    right.position,
-    bottom.position,
-    step,
-  );
-  const bottomLeft = measureCorner(
-    luma,
-    width,
-    height,
-    left.position,
-    bottom.position,
-    step,
-  );
-
-  const detectedWidth = Math.max(0, right.position - left.position) * width;
-  const detectedHeight = Math.max(0, bottom.position - top.position) * height;
-  const detectedAspect = detectedHeight ? detectedWidth / detectedHeight : 0;
-  const expectedAspect = width / height;
-  const aspectError = detectedAspect
-    ? Math.abs(Math.log(detectedAspect / expectedAspect))
-    : Number.POSITIVE_INFINITY;
-  const aspectScore = clamp01(1 - aspectError / 0.14);
-
-  const widthCoverage = detectedWidth / (width * expectedSpan);
-  const heightCoverage = detectedHeight / (height * expectedSpan);
-  const coverageScore = clamp01(Math.min(widthCoverage, heightCoverage));
-  const isInsideGuideline =
-    left.position >= expectedNearEdge - outerTolerance &&
-    right.position <= expectedFarEdge + outerTolerance &&
-    top.position >= expectedNearEdge - outerTolerance &&
-    bottom.position <= expectedFarEdge + outerTolerance;
-
-  const interiorBackgroundContrast = measureInteriorBackgroundContrast(
-    luma,
-    width,
-    height,
-    left.position,
-    right.position,
-    top.position,
-    bottom.position,
-    step,
-  );
-  // A small contrast still contributes, while strong separation saturates so
-  // dark tables and bright tables are treated equally.
-  const contrastScore = clamp01((interiorBackgroundContrast - 4) / 20);
-  const edgeScores = {
-    top: top.score,
-    right: right.score,
-    bottom: bottom.score,
-    left: left.score,
+): CaptureAlignmentMetrics {
+  const guide = guidelineEdges();
+  const innerSearchAllowance = guide.span * 0.12;
+  const nearStart = Math.max(0, guide.near - CAPTURE_RULES.outerTolerance);
+  const nearEnd = guide.near + innerSearchAllowance;
+  const farStart = guide.far - innerSearchAllowance;
+  const farEnd = Math.min(1, guide.far + CAPTURE_RULES.outerTolerance);
+  const edges: CardEdges = {
+    top: measureHorizontalEdge(luma, width, height, nearStart, nearEnd, step),
+    right: measureVerticalEdge(luma, width, height, farStart, farEnd, step),
+    bottom: measureHorizontalEdge(luma, width, height, farStart, farEnd, step),
+    left: measureVerticalEdge(luma, width, height, nearStart, nearEnd, step),
   };
-  const cornerScores = { topLeft, topRight, bottomRight, bottomLeft };
-  const averageEdgeScore =
-    (edgeScores.top + edgeScores.right + edgeScores.bottom + edgeScores.left) /
-    4;
-  const averageCornerScore =
-    (topLeft + topRight + bottomRight + bottomLeft) / 4;
-  const cardShapeConfidence = clamp01(
-    averageEdgeScore * 0.42 +
-      averageCornerScore * 0.18 +
-      contrastScore * 0.15 +
-      aspectScore * 0.15 +
-      coverageScore * 0.1,
-  );
-  const minimumEdgeScore = Math.min(
-    edgeScores.top,
-    edgeScores.right,
-    edgeScores.bottom,
-    edgeScores.left,
-  );
-  const minimumCornerScore = Math.min(
-    cornerScores.topLeft,
-    cornerScores.topRight,
-    cornerScores.bottomRight,
-    cornerScores.bottomLeft,
+  const metrics = analyzeGeometry(luma, width, height, edges, guide.span, 0.14, step);
+  const captureConfidence = clamp01(
+    metrics.averageEdgeScore * 0.42 +
+      metrics.averageCornerScore * 0.18 +
+      metrics.contrastScore * 0.15 +
+      metrics.aspectScore * 0.15 +
+      clamp01(metrics.spanCoverage) * 0.1,
   );
 
   return {
-    edgeScores,
-    cornerScores,
-    interiorBackgroundContrast,
-    aspectScore,
-    coverageScore,
-    cardShapeConfidence,
+    edgeScores: metrics.edgeScores,
+    cornerScores: metrics.cornerScores,
+    interiorBackgroundContrast: metrics.interiorBackgroundContrast,
+    aspectScore: metrics.aspectScore,
+    coverageScore: clamp01(metrics.spanCoverage),
+    captureConfidence,
     meetsMinimumGeometry:
-      minimumEdgeScore >= MIN_EDGE_SCORE &&
-      minimumCornerScore >= MIN_CORNER_SCORE &&
-      aspectScore >= 0.5 &&
-      widthCoverage >= MIN_CAPTURE_SPAN_COVERAGE &&
-      heightCoverage >= MIN_CAPTURE_SPAN_COVERAGE &&
-      widthCoverage <= 1.04 &&
-      heightCoverage <= 1.04 &&
-      isInsideGuideline,
+      passesCoverageRules(metrics, CAPTURE_RULES) &&
+      isInsideGuide(
+        edges,
+        guide.near,
+        guide.far,
+        CAPTURE_RULES.outerTolerance,
+      ),
     meetsRelaxedGeometry:
-      minimumEdgeScore >= 0.36 &&
-      minimumCornerScore >= 0.1 &&
-      aspectScore >= 0.4 &&
-      widthCoverage >= 0.74 &&
-      heightCoverage >= 0.74 &&
-      widthCoverage <= 1.08 &&
-      heightCoverage <= 1.08 &&
-      left.position >= expectedNearEdge - 0.035 &&
-      right.position <= expectedFarEdge + 0.035 &&
-      top.position >= expectedNearEdge - 0.035 &&
-      bottom.position <= expectedFarEdge + 0.035,
+      passesCoverageRules(metrics, RELAXED_CAPTURE_RULES) &&
+      isInsideGuide(
+        edges,
+        guide.near,
+        guide.far,
+        RELAXED_CAPTURE_RULES.outerTolerance,
+      ),
   };
 }
