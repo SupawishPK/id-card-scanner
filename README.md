@@ -1,6 +1,76 @@
 # Production-ready ID Card Scanner
 
-Next.js App Router + TypeScript scanner that performs ROI motion/detail analysis entirely in the browser. When the card is stable, the capture button is enabled for an intentional manual capture. It does not send camera frames to a server and has no CV/AI runtime dependency.
+An in-browser ID card scanner built with Next.js, TypeScript, and the Canvas API. It detects a card-shaped object, checks its position and stability, and enables manual capture—without an AI model, computer-vision library, or server upload.
+
+## How it works
+
+```text
+┌──────────────────────┐
+│   Open rear camera   │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ Place card inside    │◄──────────────────────────────┐
+│ the ID-1 guide       │                               │
+└──────────┬───────────┘                               │
+           ▼                                           │
+     ┌───────────────┐                                 │
+     │ Card detected?│── No ──► [WHITE guide] ─────────┤
+     └───────┬───────┘                                 │
+             │ Yes                                     │
+             ▼                                         │
+  ┌────────────────────────┐                           │
+  │ Aligned with at least  │── No ──► [RED guide] ─────┤
+  │ 80% coverage?          │                           │
+  └───────────┬────────────┘                           │
+              │ Yes                                    │
+              ▼                                        │
+       ┌───────────────┐                                │
+       │ Stable briefly?│── No ──► [RED guide] ─────────┘
+       └───────┬───────┘
+               │ Yes
+               ▼
+     ┌─────────────────────┐
+     │ [GREEN guide]       │
+     │ Capture enabled     │
+     └──────────┬──────────┘
+                ▼
+       ┌─────────────────┐
+       │ User taps       │
+       │ capture         │
+       └────────┬────────┘
+                ▼
+       ┌─────────────────┐
+       │ Crop card ROI   │
+       └────────┬────────┘
+                ▼
+       ┌─────────────────┐
+       │ Validate image  │
+       └────────┬────────┘
+                ▼
+       ┌─────────────────┐
+       │ Result          │
+       └────┬───────┬────┘
+            │ Pass  │ Fail
+            ▼       ▼
+  ┌──────────────┐  ┌──────────────┐
+  │ Show image   │  │ Show error   │
+  └──────────────┘  └──────┬───────┘
+                           ▼
+                     [Retry scan]
+```
+
+In short: **open camera → align card → hold still → capture → validate → success or retry**.
+
+## Detection at a glance
+
+- **Find the card:** Four-side edges, four corners, luminance contrast, ID-1 aspect ratio, and frame coverage are combined into a confidence score.
+- **Check stability:** Mean Absolute Difference (MAD) measures motion between consecutive frames.
+- **Prevent flicker:** Hysteresis and a short readiness hold keep the UI stable during small hand movements.
+- **Stay lightweight:** ROI processing, frame sampling, and pixel skipping reduce mobile CPU and power usage.
+- **Create the result:** Canvas crops the guide area and exports it as a JPEG image.
+
+This scanner detects only a **card-shaped object**. It does not read card data, confirm that the object is a genuine ID card, or validate the information printed on it.
 
 ## Run
 
@@ -27,5 +97,4 @@ The workflow supplies `NEXT_PUBLIC_BASE_PATH=/id-card-scanner`, runs the type ch
 
 The current proof-of-concept validation flow randomly returns success or an incomplete-card error after capture. Replace the timer and random result in `components/id-card-scanner.tsx` with the real validation service before production rollout.
 
-Tune the motion, variance, and edge thresholds in `hooks/use-id-card-scanner.ts` after testing target devices and lighting. Pixel heuristics verify motion and visual detail; they do not authenticate a card or validate its contents.
-# id-card-scanner
+Tune the motion, variance, and edge thresholds in `hooks/use-id-card-scanner.ts` and `lib/card-edge-detection.ts` after testing target devices and lighting. Pixel heuristics verify motion and visual detail; they do not authenticate a card or validate its contents.
