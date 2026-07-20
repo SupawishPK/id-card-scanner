@@ -17,7 +17,8 @@ const FRAME_PATHS = [
 ] as const;
 
 const FRAME_COLOR: Record<DetectionState, string> = {
-  searching: "rgba(244, 63, 94, 1)",
+  searching: "rgba(255, 255, 255, 1)",
+  "card-detected": "rgba(244, 63, 94, 1)",
   "hold-still": "rgba(244, 63, 94, 1)",
   stable: "rgba(52, 211, 153, 1)",
 };

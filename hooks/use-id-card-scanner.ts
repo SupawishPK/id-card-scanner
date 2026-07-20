@@ -10,8 +10,11 @@ import {
 import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
 import {
   CARD_ANALYSIS_PADDING_RATIO,
+  CARD_PRESENCE_ENTER_CONFIDENCE,
+  CARD_PRESENCE_EXIT_CONFIDENCE,
   CARD_SHAPE_ENTER_CONFIDENCE,
   CARD_SHAPE_EXIT_CONFIDENCE,
+  detectCardPresence,
   detectCardShape,
 } from "@/lib/card-edge-detection";
 
@@ -28,7 +31,11 @@ const MOTION_EXIT_THRESHOLD = 13;
 const READY_MISS_GRACE_FRAMES = 5;
 
 type CameraState = "idle" | "requesting" | "ready" | "error";
-export type DetectionState = "searching" | "hold-still" | "stable";
+export type DetectionState =
+  | "searching"
+  | "card-detected"
+  | "hold-still"
+  | "stable";
 
 type ScannerOptions = {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -164,6 +171,7 @@ export function useIdCardScanner({
   const stableSinceRef = useRef<number | null>(null);
   const stableFrameCountRef = useRef(0);
   const readyMissCountRef = useRef(0);
+  const hasDetectedCardRef = useRef(false);
   const hasCardShapeRef = useRef(false);
   const isCaptureReadyRef = useRef(false);
   const capturedRef = useRef(false);
@@ -187,6 +195,7 @@ export function useIdCardScanner({
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
     readyMissCountRef.current = 0;
+    hasDetectedCardRef.current = false;
     hasCardShapeRef.current = false;
     isCaptureReadyRef.current = false;
   }, [videoRef]);
@@ -304,20 +313,42 @@ export function useIdCardScanner({
       const motion = previous ? motionSum / samples : Number.POSITIVE_INFINITY;
       const edgeDensity = comparisons ? edgeCount / comparisons : 0;
       const hasUsableLight = mean > 42 && mean < 225;
-      const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.045;
-      const cardShape = detectCardShape(
+      const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.012;
+      const hasPresenceDetails =
+        mean > 24 && mean < 235 && variance > 120 && edgeDensity > 0.003;
+      const cardPresence = detectCardPresence(
         current,
         ANALYSIS_WIDTH,
         ANALYSIS_HEIGHT,
         step,
       );
+      const presenceConfidenceThreshold = hasDetectedCardRef.current
+        ? CARD_PRESENCE_EXIT_CONFIDENCE
+        : CARD_PRESENCE_ENTER_CONFIDENCE;
+      const meetsPresenceGeometry = hasDetectedCardRef.current
+        ? cardPresence.meetsRelaxedCard
+        : cardPresence.meetsMinimumCard;
+      const hasPresenceCard =
+        hasPresenceDetails &&
+        meetsPresenceGeometry &&
+        cardPresence.cardPresenceConfidence >= presenceConfidenceThreshold;
+      // Capture geometry is evaluated independently. A strict presence miss
+      // must never block a card that already covers at least 80% of the frame.
+      const cardShape = hasCardDetails
+        ? detectCardShape(current, ANALYSIS_WIDTH, ANALYSIS_HEIGHT, step)
+        : null;
       const shapeConfidenceThreshold = hasCardShapeRef.current
         ? CARD_SHAPE_EXIT_CONFIDENCE
         : CARD_SHAPE_ENTER_CONFIDENCE;
+      const meetsShapeGeometry = hasCardShapeRef.current
+        ? cardShape?.meetsRelaxedGeometry
+        : cardShape?.meetsMinimumGeometry;
       const hasCardShape =
-        hasCardDetails &&
-        cardShape.meetsMinimumGeometry &&
+        cardShape !== null &&
+        meetsShapeGeometry === true &&
         cardShape.cardShapeConfidence >= shapeConfidenceThreshold;
+      const hasDetectedCard = hasPresenceCard || hasCardShape;
+      hasDetectedCardRef.current = hasDetectedCard;
       hasCardShapeRef.current = hasCardShape;
       const wasCaptureReady = isCaptureReadyRef.current;
       const motionThreshold = wasCaptureReady
@@ -356,9 +387,11 @@ export function useIdCardScanner({
       isCaptureReadyRef.current = isCaptureReady;
       const nextState: DetectionState = isCaptureReady
         ? "stable"
-        : !hasCardShape
-          ? "searching"
-          : "hold-still";
+        : hasCardShape
+          ? "hold-still"
+          : hasDetectedCard
+            ? "card-detected"
+            : "searching";
 
       setDetectionState((currentState) =>
         currentState === nextState ? currentState : nextState,
@@ -426,6 +459,7 @@ export function useIdCardScanner({
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
     readyMissCountRef.current = 0;
+    hasDetectedCardRef.current = false;
     hasCardShapeRef.current = false;
     isCaptureReadyRef.current = false;
     setCapturedImage(null);

@@ -14,8 +14,16 @@ type IdCardScannerProps = {
 
 const STATUS_TEXT: Record<DetectionState, string> = {
   searching: "วางบัตรให้ตรงกรอบ",
+  "card-detected": "พบบัตรแล้ว จัดบัตรให้พอดีกรอบ",
   "hold-still": "พบบัตรแล้ว กรุณาถือให้นิ่ง",
   stable: "ตำแหน่งดีแล้ว กดปุ่มถ่ายรูป",
+};
+
+const STATUS_DOT_CLASS: Record<DetectionState, string> = {
+  searching: "bg-white shadow-[0_0_8px_rgba(255,255,255,0.75)]",
+  "card-detected": "bg-rose-400 shadow-[0_0_8px_#fb7185]",
+  "hold-still": "bg-rose-400 shadow-[0_0_8px_#fb7185]",
+  stable: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
 };
 
 const MOCK_VALIDATION_DELAY_MS = 1800;
@@ -97,9 +105,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
           <div className="absolute -top-14 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-center text-sm font-medium text-white shadow-lg backdrop-blur-md">
             <span
-              className={`mr-2 inline-block size-2.5 rounded-full ${
-                isStable ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-rose-400"
-              }`}
+              className={`mr-2 inline-block size-2.5 rounded-full ${STATUS_DOT_CLASS[detectionState]}`}
             />
             {STATUS_TEXT[detectionState]}
           </div>

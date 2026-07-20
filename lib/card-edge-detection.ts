@@ -3,13 +3,20 @@
 export const CARD_ANALYSIS_PADDING_RATIO = 0.08;
 export const CARD_SHAPE_ENTER_CONFIDENCE = 0.62;
 export const CARD_SHAPE_EXIT_CONFIDENCE = 0.5;
+export const CARD_PRESENCE_ENTER_CONFIDENCE = 0.54;
+export const CARD_PRESENCE_EXIT_CONFIDENCE = 0.44;
 
-const EDGE_BAND_TOLERANCE_RATIO = 0.035;
 const EDGE_SCAN_INSET_RATIO = 0.14;
 const CORNER_RADIUS_RATIO = 0.055;
 const EDGE_LUMA_DELTA_THRESHOLD = 16;
 const MIN_EDGE_SCORE = 0.42;
 const MIN_CORNER_SCORE = 0.16;
+// A visually 80% card measures about 79.8% after the 2px sampling grid.
+const MIN_CAPTURE_SPAN_COVERAGE = 0.79;
+const MIN_PRESENCE_EDGE_SCORE = 0.42;
+const MIN_PRESENCE_CORNER_SCORE = 0.12;
+// Presence is intentionally permissive; capture readiness remains at 80%.
+const MIN_PRESENCE_SPAN_COVERAGE = 0.23;
 
 type EdgeMeasurement = {
   score: number;
@@ -34,6 +41,17 @@ export type CardShapeMetrics = {
   coverageScore: number;
   cardShapeConfidence: number;
   meetsMinimumGeometry: boolean;
+  meetsRelaxedGeometry: boolean;
+};
+
+export type CardPresenceMetrics = {
+  cardPresenceConfidence: number;
+  spanCoverage: number;
+  aspectScore: number;
+  minimumEdgeScore: number;
+  minimumCornerScore: number;
+  meetsMinimumCard: boolean;
+  meetsRelaxedCard: boolean;
 };
 
 function clamp01(value: number) {
@@ -52,6 +70,7 @@ function scoreEdgePositions(
   positionCount: number,
   positionSum: number,
   positionSquaredSum: number,
+  positiveDirectionCount: number,
   scanlines: number,
   bandWidth: number,
   dimension: number,
@@ -66,11 +85,16 @@ function scoreEdgePositions(
   const standardDeviation = Math.sqrt(variance);
   const support = positionCount / scanlines;
   const alignment = clamp01(1 - standardDeviation / Math.max(1, bandWidth * 0.45));
+  const directionConsistency = Math.max(
+    positiveDirectionCount,
+    positionCount - positiveDirectionCount,
+  ) / positionCount;
+  const directionScore = clamp01((directionConsistency - 0.5) * 2);
 
   return {
     // Random texture can create edge pixels, but it will not align into one
     // continuous side. Weight alignment more heavily than raw support.
-    score: support * (0.1 + alignment * 0.9),
+    score: support * (0.08 + alignment * 0.72 + directionScore * 0.2),
     position: mean / dimension,
   };
 }
@@ -82,28 +106,34 @@ function measureVerticalEdge(
   bandStartRatio: number,
   bandEndRatio: number,
   step: number,
+  scanStartRatio = EDGE_SCAN_INSET_RATIO,
+  scanEndRatio = 1 - EDGE_SCAN_INSET_RATIO,
 ): EdgeMeasurement {
   const xStart = Math.max(step, alignUp(width * bandStartRatio, step));
   const xEnd = Math.min(
     width - step - 1,
     alignDown(width * bandEndRatio, step),
   );
-  const yStart = alignUp(height * EDGE_SCAN_INSET_RATIO, step);
-  const yEnd = alignDown(height * (1 - EDGE_SCAN_INSET_RATIO), step);
+  const yStart = Math.max(0, alignUp(height * scanStartRatio, step));
+  const yEnd = Math.min(height - 1, alignDown(height * scanEndRatio, step));
+  if (xEnd < xStart || yEnd < yStart) return { score: 0, position: 0 };
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
+  let positiveDirectionCount = 0;
   let scanlines = 0;
 
   for (let y = yStart; y <= yEnd; y += step) {
     let strongestDelta = 0;
+    let strongestSignedDelta = 0;
     let strongestPosition = xStart;
     for (let x = xStart; x <= xEnd; x += step) {
-      const delta = Math.abs(
-        luma[y * width + x + step] - luma[y * width + x - step],
-      );
+      const signedDelta =
+        luma[y * width + x + step] - luma[y * width + x - step];
+      const delta = Math.abs(signedDelta);
       if (delta > strongestDelta) {
         strongestDelta = delta;
+        strongestSignedDelta = signedDelta;
         strongestPosition = x;
       }
     }
@@ -111,6 +141,7 @@ function measureVerticalEdge(
       positionCount += 1;
       positionSum += strongestPosition;
       positionSquaredSum += strongestPosition * strongestPosition;
+      if (strongestSignedDelta >= 0) positiveDirectionCount += 1;
     }
     scanlines += 1;
   }
@@ -119,6 +150,7 @@ function measureVerticalEdge(
     positionCount,
     positionSum,
     positionSquaredSum,
+    positiveDirectionCount,
     scanlines,
     xEnd - xStart + step,
     width,
@@ -132,28 +164,34 @@ function measureHorizontalEdge(
   bandStartRatio: number,
   bandEndRatio: number,
   step: number,
+  scanStartRatio = EDGE_SCAN_INSET_RATIO,
+  scanEndRatio = 1 - EDGE_SCAN_INSET_RATIO,
 ): EdgeMeasurement {
   const yStart = Math.max(step, alignUp(height * bandStartRatio, step));
   const yEnd = Math.min(
     height - step - 1,
     alignDown(height * bandEndRatio, step),
   );
-  const xStart = alignUp(width * EDGE_SCAN_INSET_RATIO, step);
-  const xEnd = alignDown(width * (1 - EDGE_SCAN_INSET_RATIO), step);
+  const xStart = Math.max(0, alignUp(width * scanStartRatio, step));
+  const xEnd = Math.min(width - 1, alignDown(width * scanEndRatio, step));
+  if (yEnd < yStart || xEnd < xStart) return { score: 0, position: 0 };
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
+  let positiveDirectionCount = 0;
   let scanlines = 0;
 
   for (let x = xStart; x <= xEnd; x += step) {
     let strongestDelta = 0;
+    let strongestSignedDelta = 0;
     let strongestPosition = yStart;
     for (let y = yStart; y <= yEnd; y += step) {
-      const delta = Math.abs(
-        luma[(y + step) * width + x] - luma[(y - step) * width + x],
-      );
+      const signedDelta =
+        luma[(y + step) * width + x] - luma[(y - step) * width + x];
+      const delta = Math.abs(signedDelta);
       if (delta > strongestDelta) {
         strongestDelta = delta;
+        strongestSignedDelta = signedDelta;
         strongestPosition = y;
       }
     }
@@ -161,6 +199,7 @@ function measureHorizontalEdge(
       positionCount += 1;
       positionSum += strongestPosition;
       positionSquaredSum += strongestPosition * strongestPosition;
+      if (strongestSignedDelta >= 0) positiveDirectionCount += 1;
     }
     scanlines += 1;
   }
@@ -169,6 +208,7 @@ function measureHorizontalEdge(
     positionCount,
     positionSum,
     positionSquaredSum,
+    positiveDirectionCount,
     scanlines,
     yEnd - yStart + step,
     height,
@@ -235,8 +275,10 @@ function measureInteriorBackgroundContrast(
   luma: Uint8Array,
   width: number,
   height: number,
-  expectedNearEdge: number,
-  expectedFarEdge: number,
+  leftEdge: number,
+  rightEdge: number,
+  topEdge: number,
+  bottomEdge: number,
   step: number,
 ) {
   const interiorInset = 0.025;
@@ -252,15 +294,15 @@ function measureInteriorBackgroundContrast(
       const xRatio = x / width;
       const value = luma[y * width + x];
       const isInterior =
-        xRatio > expectedNearEdge + interiorInset &&
-        xRatio < expectedFarEdge - interiorInset &&
-        yRatio > expectedNearEdge + interiorInset &&
-        yRatio < expectedFarEdge - interiorInset;
+        xRatio > leftEdge + interiorInset &&
+        xRatio < rightEdge - interiorInset &&
+        yRatio > topEdge + interiorInset &&
+        yRatio < bottomEdge - interiorInset;
       const isBackground =
-        xRatio < expectedNearEdge - backgroundInset ||
-        xRatio > expectedFarEdge + backgroundInset ||
-        yRatio < expectedNearEdge - backgroundInset ||
-        yRatio > expectedFarEdge + backgroundInset;
+        xRatio < leftEdge - backgroundInset ||
+        xRatio > rightEdge + backgroundInset ||
+        yRatio < topEdge - backgroundInset ||
+        yRatio > bottomEdge + backgroundInset;
 
       if (isInterior) {
         interiorSum += value;
@@ -278,6 +320,202 @@ function measureInteriorBackgroundContrast(
   );
 }
 
+/** Detects a plausible ID-1 rectangle anywhere inside the guideline. */
+export function detectCardPresence(
+  luma: Uint8Array,
+  width: number,
+  height: number,
+  step = 2,
+): CardPresenceMetrics {
+  const guidelineNearEdge =
+    CARD_ANALYSIS_PADDING_RATIO / (1 + CARD_ANALYSIS_PADDING_RATIO * 2);
+  const guidelineFarEdge = 1 - guidelineNearEdge;
+  const searchOuterEdge = Math.max(0.02, guidelineNearEdge - 0.025);
+
+  const coarseLeft = measureVerticalEdge(
+    luma,
+    width,
+    height,
+    searchOuterEdge,
+    0.46,
+    step,
+  );
+  const coarseRight = measureVerticalEdge(
+    luma,
+    width,
+    height,
+    0.54,
+    1 - searchOuterEdge,
+    step,
+  );
+  const coarseTop = measureHorizontalEdge(
+    luma,
+    width,
+    height,
+    searchOuterEdge,
+    0.46,
+    step,
+  );
+  const coarseBottom = measureHorizontalEdge(
+    luma,
+    width,
+    height,
+    0.54,
+    1 - searchOuterEdge,
+    step,
+  );
+
+  // The coarse pass finds approximate bounds over the whole ROI. Re-score each
+  // side only across the detected card span so a small but continuous edge is
+  // not penalized merely because it occupies fewer global scanlines.
+  const refinementBand = 0.04;
+  const spanInset = 0.018;
+  const left = measureVerticalEdge(
+    luma,
+    width,
+    height,
+    coarseLeft.position - refinementBand,
+    coarseLeft.position + refinementBand,
+    step,
+    coarseTop.position + spanInset,
+    coarseBottom.position - spanInset,
+  );
+  const right = measureVerticalEdge(
+    luma,
+    width,
+    height,
+    coarseRight.position - refinementBand,
+    coarseRight.position + refinementBand,
+    step,
+    coarseTop.position + spanInset,
+    coarseBottom.position - spanInset,
+  );
+  const top = measureHorizontalEdge(
+    luma,
+    width,
+    height,
+    coarseTop.position - refinementBand,
+    coarseTop.position + refinementBand,
+    step,
+    coarseLeft.position + spanInset,
+    coarseRight.position - spanInset,
+  );
+  const bottom = measureHorizontalEdge(
+    luma,
+    width,
+    height,
+    coarseBottom.position - refinementBand,
+    coarseBottom.position + refinementBand,
+    step,
+    coarseLeft.position + spanInset,
+    coarseRight.position - spanInset,
+  );
+
+  const detectedWidth = Math.max(0, right.position - left.position) * width;
+  const detectedHeight = Math.max(0, bottom.position - top.position) * height;
+  const detectedAspect = detectedHeight ? detectedWidth / detectedHeight : 0;
+  const expectedAspect = width / height;
+  const aspectError = detectedAspect
+    ? Math.abs(Math.log(detectedAspect / expectedAspect))
+    : Number.POSITIVE_INFINITY;
+  const aspectScore = clamp01(1 - aspectError / 0.18);
+  const guidelineSpan = guidelineFarEdge - guidelineNearEdge;
+  const widthCoverage = detectedWidth / (width * guidelineSpan);
+  const heightCoverage = detectedHeight / (height * guidelineSpan);
+  const spanCoverage = Math.min(widthCoverage, heightCoverage);
+
+  const topLeft = measureCorner(
+    luma,
+    width,
+    height,
+    left.position,
+    top.position,
+    step,
+  );
+  const topRight = measureCorner(
+    luma,
+    width,
+    height,
+    right.position,
+    top.position,
+    step,
+  );
+  const bottomRight = measureCorner(
+    luma,
+    width,
+    height,
+    right.position,
+    bottom.position,
+    step,
+  );
+  const bottomLeft = measureCorner(
+    luma,
+    width,
+    height,
+    left.position,
+    bottom.position,
+    step,
+  );
+  const interiorBackgroundContrast = measureInteriorBackgroundContrast(
+    luma,
+    width,
+    height,
+    left.position,
+    right.position,
+    top.position,
+    bottom.position,
+    step,
+  );
+  const contrastScore = clamp01((interiorBackgroundContrast - 4) / 20);
+  const averageEdgeScore = (top.score + right.score + bottom.score + left.score) / 4;
+  const averageCornerScore =
+    (topLeft + topRight + bottomRight + bottomLeft) / 4;
+  const coverageConfidence = clamp01(
+    (spanCoverage - MIN_PRESENCE_SPAN_COVERAGE) / 0.35,
+  );
+  const cardPresenceConfidence = clamp01(
+    averageEdgeScore * 0.42 +
+      averageCornerScore * 0.23 +
+      aspectScore * 0.18 +
+      contrastScore * 0.1 +
+      coverageConfidence * 0.07,
+  );
+  const minimumEdgeScore = Math.min(
+    top.score,
+    right.score,
+    bottom.score,
+    left.score,
+  );
+  const minimumCornerScore = Math.min(
+    topLeft,
+    topRight,
+    bottomRight,
+    bottomLeft,
+  );
+
+  return {
+    cardPresenceConfidence,
+    spanCoverage,
+    aspectScore,
+    minimumEdgeScore,
+    minimumCornerScore,
+    meetsMinimumCard:
+      minimumEdgeScore >= MIN_PRESENCE_EDGE_SCORE &&
+      minimumCornerScore >= MIN_PRESENCE_CORNER_SCORE &&
+      aspectScore >= 0.48 &&
+      spanCoverage >= MIN_PRESENCE_SPAN_COVERAGE &&
+      widthCoverage <= 1.08 &&
+      heightCoverage <= 1.08,
+    meetsRelaxedCard:
+      minimumEdgeScore >= 0.4 &&
+      minimumCornerScore >= 0.08 &&
+      aspectScore >= 0.38 &&
+      spanCoverage >= 0.2 &&
+      widthCoverage <= 1.12 &&
+      heightCoverage <= 1.12,
+  };
+}
+
 /** Produces a model-free confidence score for a card aligned to the ROI. */
 export function detectCardShape(
   luma: Uint8Array,
@@ -288,13 +526,15 @@ export function detectCardShape(
   const expectedNearEdge =
     CARD_ANALYSIS_PADDING_RATIO / (1 + CARD_ANALYSIS_PADDING_RATIO * 2);
   const expectedFarEdge = 1 - expectedNearEdge;
-  const nearStart = Math.max(
-    0,
-    expectedNearEdge - EDGE_BAND_TOLERANCE_RATIO,
-  );
-  const nearEnd = expectedNearEdge + EDGE_BAND_TOLERANCE_RATIO;
-  const farStart = 1 - nearEnd;
-  const farEnd = Math.min(1, 1 - nearStart);
+  const expectedSpan = expectedFarEdge - expectedNearEdge;
+  const outerTolerance = 0.02;
+  const innerSearchAllowance = expectedSpan * 0.12;
+  // Search inward far enough to accept a centered card covering 80% of the
+  // guideline, but only slightly outside so oversized cards remain rejected.
+  const nearStart = Math.max(0, expectedNearEdge - outerTolerance);
+  const nearEnd = expectedNearEdge + innerSearchAllowance;
+  const farStart = expectedFarEdge - innerSearchAllowance;
+  const farEnd = Math.min(1, expectedFarEdge + outerTolerance);
 
   const top = measureHorizontalEdge(
     luma,
@@ -333,32 +573,32 @@ export function detectCardShape(
     luma,
     width,
     height,
-    expectedNearEdge,
-    expectedNearEdge,
+    left.position,
+    top.position,
     step,
   );
   const topRight = measureCorner(
     luma,
     width,
     height,
-    expectedFarEdge,
-    expectedNearEdge,
+    right.position,
+    top.position,
     step,
   );
   const bottomRight = measureCorner(
     luma,
     width,
     height,
-    expectedFarEdge,
-    expectedFarEdge,
+    right.position,
+    bottom.position,
     step,
   );
   const bottomLeft = measureCorner(
     luma,
     width,
     height,
-    expectedNearEdge,
-    expectedFarEdge,
+    left.position,
+    bottom.position,
     step,
   );
 
@@ -371,20 +611,23 @@ export function detectCardShape(
     : Number.POSITIVE_INFINITY;
   const aspectScore = clamp01(1 - aspectError / 0.14);
 
-  const expectedSpan = expectedFarEdge - expectedNearEdge;
   const widthCoverage = detectedWidth / (width * expectedSpan);
   const heightCoverage = detectedHeight / (height * expectedSpan);
-  const coverageScore =
-    (clamp01(1 - Math.abs(widthCoverage - 1) / 0.18) +
-      clamp01(1 - Math.abs(heightCoverage - 1) / 0.18)) /
-    2;
+  const coverageScore = clamp01(Math.min(widthCoverage, heightCoverage));
+  const isInsideGuideline =
+    left.position >= expectedNearEdge - outerTolerance &&
+    right.position <= expectedFarEdge + outerTolerance &&
+    top.position >= expectedNearEdge - outerTolerance &&
+    bottom.position <= expectedFarEdge + outerTolerance;
 
   const interiorBackgroundContrast = measureInteriorBackgroundContrast(
     luma,
     width,
     height,
-    expectedNearEdge,
-    expectedFarEdge,
+    left.position,
+    right.position,
+    top.position,
+    bottom.position,
     step,
   );
   // A small contrast still contributes, while strong separation saturates so
@@ -433,6 +676,22 @@ export function detectCardShape(
       minimumEdgeScore >= MIN_EDGE_SCORE &&
       minimumCornerScore >= MIN_CORNER_SCORE &&
       aspectScore >= 0.5 &&
-      coverageScore >= 0.5,
+      widthCoverage >= MIN_CAPTURE_SPAN_COVERAGE &&
+      heightCoverage >= MIN_CAPTURE_SPAN_COVERAGE &&
+      widthCoverage <= 1.04 &&
+      heightCoverage <= 1.04 &&
+      isInsideGuideline,
+    meetsRelaxedGeometry:
+      minimumEdgeScore >= 0.36 &&
+      minimumCornerScore >= 0.1 &&
+      aspectScore >= 0.4 &&
+      widthCoverage >= 0.74 &&
+      heightCoverage >= 0.74 &&
+      widthCoverage <= 1.08 &&
+      heightCoverage <= 1.08 &&
+      left.position >= expectedNearEdge - 0.035 &&
+      right.position <= expectedFarEdge + 0.035 &&
+      top.position >= expectedNearEdge - 0.035 &&
+      bottom.position <= expectedFarEdge + 0.035,
   };
 }
