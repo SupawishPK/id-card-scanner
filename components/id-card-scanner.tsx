@@ -14,7 +14,7 @@ type IdCardScannerProps = {
 
 const STATUS_TEXT: Record<DetectionState, string> = {
   searching: "วางบัตรให้ตรงกรอบ",
-  "hold-still": "วางบัตรให้ตรงกรอบ",
+  "hold-still": "พบบัตรแล้ว กรุณาถือให้นิ่ง",
   stable: "ตำแหน่งดีแล้ว กดปุ่มถ่ายรูป",
 };
 

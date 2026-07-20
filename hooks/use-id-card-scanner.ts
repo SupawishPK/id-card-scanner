@@ -8,6 +8,12 @@ import {
   useState,
 } from "react";
 import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
+import {
+  CARD_ANALYSIS_PADDING_RATIO,
+  CARD_SHAPE_ENTER_CONFIDENCE,
+  CARD_SHAPE_EXIT_CONFIDENCE,
+  detectCardShape,
+} from "@/lib/card-edge-detection";
 
 // The current guideline is the landscape ID-1 frame rotated 90°, so analysis
 // and capture follow its portrait-oriented bounding box.
@@ -33,6 +39,21 @@ type ScannerOptions = {
 };
 
 type SourceRect = { sx: number; sy: number; sw: number; sh: number };
+
+function expandSourceRect(
+  rect: SourceRect,
+  videoWidth: number,
+  videoHeight: number,
+): SourceRect {
+  const paddingX = rect.sw * CARD_ANALYSIS_PADDING_RATIO;
+  const paddingY = rect.sh * CARD_ANALYSIS_PADDING_RATIO;
+  const sx = Math.max(0, rect.sx - paddingX);
+  const sy = Math.max(0, rect.sy - paddingY);
+  const right = Math.min(videoWidth, rect.sx + rect.sw + paddingX);
+  const bottom = Math.min(videoHeight, rect.sy + rect.sh + paddingY);
+
+  return { sx, sy, sw: right - sx, sh: bottom - sy };
+}
 
 function cameraErrorMessage(error: unknown): string {
   if (!(error instanceof DOMException)) {
@@ -143,6 +164,7 @@ export function useIdCardScanner({
   const stableSinceRef = useRef<number | null>(null);
   const stableFrameCountRef = useRef(0);
   const readyMissCountRef = useRef(0);
+  const hasCardShapeRef = useRef(false);
   const isCaptureReadyRef = useRef(false);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
@@ -165,6 +187,7 @@ export function useIdCardScanner({
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
     readyMissCountRef.current = 0;
+    hasCardShapeRef.current = false;
     isCaptureReadyRef.current = false;
   }, [videoRef]);
 
@@ -204,6 +227,11 @@ export function useIdCardScanner({
       const sourceRect = getSourceRect(video, roi);
       if (!sourceRect) return;
       sourceRectRef.current = sourceRect;
+      const analysisSourceRect = expandSourceRect(
+        sourceRect,
+        video.videoWidth,
+        video.videoHeight,
+      );
 
       let canvas = analysisCanvasRef.current;
       if (!canvas) {
@@ -217,10 +245,10 @@ export function useIdCardScanner({
 
       context.drawImage(
         video,
-        sourceRect.sx,
-        sourceRect.sy,
-        sourceRect.sw,
-        sourceRect.sh,
+        analysisSourceRect.sx,
+        analysisSourceRect.sy,
+        analysisSourceRect.sw,
+        analysisSourceRect.sh,
         0,
         0,
         ANALYSIS_WIDTH,
@@ -277,12 +305,26 @@ export function useIdCardScanner({
       const edgeDensity = comparisons ? edgeCount / comparisons : 0;
       const hasUsableLight = mean > 42 && mean < 225;
       const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.045;
+      const cardShape = detectCardShape(
+        current,
+        ANALYSIS_WIDTH,
+        ANALYSIS_HEIGHT,
+        step,
+      );
+      const shapeConfidenceThreshold = hasCardShapeRef.current
+        ? CARD_SHAPE_EXIT_CONFIDENCE
+        : CARD_SHAPE_ENTER_CONFIDENCE;
+      const hasCardShape =
+        hasCardDetails &&
+        cardShape.meetsMinimumGeometry &&
+        cardShape.cardShapeConfidence >= shapeConfidenceThreshold;
+      hasCardShapeRef.current = hasCardShape;
       const wasCaptureReady = isCaptureReadyRef.current;
       const motionThreshold = wasCaptureReady
         ? MOTION_EXIT_THRESHOLD
         : MOTION_ENTER_THRESHOLD;
       const isMotionStable = previous !== null && motion < motionThreshold;
-      const isCandidate = hasCardDetails && isMotionStable;
+      const isCandidate = hasCardShape && isMotionStable;
       let isCaptureReady = wasCaptureReady;
 
       if (isCandidate) {
@@ -314,7 +356,7 @@ export function useIdCardScanner({
       isCaptureReadyRef.current = isCaptureReady;
       const nextState: DetectionState = isCaptureReady
         ? "stable"
-        : !hasCardDetails
+        : !hasCardShape
           ? "searching"
           : "hold-still";
 
@@ -384,6 +426,7 @@ export function useIdCardScanner({
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
     readyMissCountRef.current = 0;
+    hasCardShapeRef.current = false;
     isCaptureReadyRef.current = false;
     setCapturedImage(null);
     setDetectionState("searching");
