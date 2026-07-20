@@ -14,6 +14,12 @@ import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
 const ANALYSIS_HEIGHT = 240;
 const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT / ID_CARD_ASPECT_RATIO);
 const SAMPLE_INTERVAL_MS = 1000 / 15;
+// Hand-held phones naturally produce small frame-to-frame luma changes. Use a
+// stricter threshold to enter the ready state and a wider one to leave it, then
+// tolerate a short burst of bad samples so the UI does not flicker.
+const MOTION_ENTER_THRESHOLD = 9;
+const MOTION_EXIT_THRESHOLD = 13;
+const READY_MISS_GRACE_FRAMES = 5;
 
 type CameraState = "idle" | "requesting" | "ready" | "error";
 export type DetectionState = "searching" | "hold-still" | "stable";
@@ -118,8 +124,8 @@ function getSourceRect(video: HTMLVideoElement, roi: HTMLElement): SourceRect | 
 export function useIdCardScanner({
   videoRef,
   roiRef,
-  stableFrames = 10,
-  minimumStableMs = 650,
+  stableFrames = 8,
+  minimumStableMs = 500,
   jpegQuality = 0.85,
 }: ScannerOptions) {
   const [cameraState, setCameraState] = useState<CameraState>("idle");
@@ -136,6 +142,7 @@ export function useIdCardScanner({
   const lastSampleAtRef = useRef(0);
   const stableSinceRef = useRef<number | null>(null);
   const stableFrameCountRef = useRef(0);
+  const readyMissCountRef = useRef(0);
   const isCaptureReadyRef = useRef(false);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
@@ -155,6 +162,9 @@ export function useIdCardScanner({
     currentLumaRef.current = null;
     sourceRectRef.current = null;
     analysisCanvasRef.current = null;
+    stableFrameCountRef.current = 0;
+    stableSinceRef.current = null;
+    readyMissCountRef.current = 0;
     isCaptureReadyRef.current = false;
   }, [videoRef]);
 
@@ -267,25 +277,45 @@ export function useIdCardScanner({
       const edgeDensity = comparisons ? edgeCount / comparisons : 0;
       const hasUsableLight = mean > 42 && mean < 225;
       const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.045;
-      const isMotionStable = previous !== null && motion < 6.5;
+      const wasCaptureReady = isCaptureReadyRef.current;
+      const motionThreshold = wasCaptureReady
+        ? MOTION_EXIT_THRESHOLD
+        : MOTION_ENTER_THRESHOLD;
+      const isMotionStable = previous !== null && motion < motionThreshold;
       const isCandidate = hasCardDetails && isMotionStable;
+      let isCaptureReady = wasCaptureReady;
 
       if (isCandidate) {
-        stableFrameCountRef.current += 1;
-        stableSinceRef.current ??= now;
+        readyMissCountRef.current = 0;
+        if (!wasCaptureReady) {
+          stableFrameCountRef.current += 1;
+          stableSinceRef.current ??= now;
+
+          const stableDuration = now - stableSinceRef.current;
+          isCaptureReady =
+            stableFrameCountRef.current >= stableFrames &&
+            stableDuration >= minimumStableMs;
+        }
+      } else if (
+        wasCaptureReady &&
+        readyMissCountRef.current < READY_MISS_GRACE_FRAMES
+      ) {
+        // Keep the shutter enabled through brief hand tremor or one noisy
+        // exposure adjustment. Sustained movement still exits after ~330 ms.
+        readyMissCountRef.current += 1;
+        isCaptureReady = true;
       } else {
         stableFrameCountRef.current = 0;
         stableSinceRef.current = null;
+        readyMissCountRef.current = 0;
+        isCaptureReady = false;
       }
 
-      const stableDuration = stableSinceRef.current === null ? 0 : now - stableSinceRef.current;
-      const isCaptureReady =
-        stableFrameCountRef.current >= stableFrames && stableDuration >= minimumStableMs;
       isCaptureReadyRef.current = isCaptureReady;
-      const nextState: DetectionState = !hasCardDetails
-        ? "searching"
-        : isCaptureReady
-          ? "stable"
+      const nextState: DetectionState = isCaptureReady
+        ? "stable"
+        : !hasCardDetails
+          ? "searching"
           : "hold-still";
 
       setDetectionState((currentState) =>
@@ -353,6 +383,7 @@ export function useIdCardScanner({
     currentLumaRef.current = null;
     stableFrameCountRef.current = 0;
     stableSinceRef.current = null;
+    readyMissCountRef.current = 0;
     isCaptureReadyRef.current = false;
     setCapturedImage(null);
     setDetectionState("searching");
