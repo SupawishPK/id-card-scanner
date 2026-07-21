@@ -99,6 +99,7 @@ export async function setTorch(
     await track.applyConstraints({ advanced: [{ torch: on }] });
     return on;
   } catch {
+    // Target state failed, retain previous state (!on)
     return !on;
   }
 }
@@ -688,26 +689,31 @@ function measureInteriorBackgroundContrast(
   const interiorInset = 0.025;
   const backgroundInset = 0.012;
   const { top, right, bottom, left } = edges;
+
+  const intLeft = (left.position + interiorInset) * width;
+  const intRight = (right.position - interiorInset) * width;
+  const intTop = (top.position + interiorInset) * height;
+  const intBottom = (bottom.position - interiorInset) * height;
+
+  const bgLeft = (left.position - backgroundInset) * width;
+  const bgRight = (right.position + backgroundInset) * width;
+  const bgTop = (top.position - backgroundInset) * height;
+  const bgBottom = (bottom.position + backgroundInset) * height;
+
   let interiorSum = 0;
   let interiorSamples = 0;
   let backgroundSum = 0;
   let backgroundSamples = 0;
 
   for (let y = 0; y < height; y += step) {
-    const yRatio = y / height;
+    const isIntY = y > intTop && y < intBottom;
+    const isBgY = y < bgTop || y > bgBottom;
+    const rowOffset = y * width;
+
     for (let x = 0; x < width; x += step) {
-      const xRatio = x / width;
-      const value = luma[y * width + x];
-      const isInterior =
-        xRatio > left.position + interiorInset &&
-        xRatio < right.position - interiorInset &&
-        yRatio > top.position + interiorInset &&
-        yRatio < bottom.position - interiorInset;
-      const isBackground =
-        xRatio < left.position - backgroundInset ||
-        xRatio > right.position + backgroundInset ||
-        yRatio < top.position - backgroundInset ||
-        yRatio > bottom.position + backgroundInset;
+      const isInterior = isIntY && x > intLeft && x < intRight;
+      const isBackground = isBgY || x < bgLeft || x > bgRight;
+      const value = luma[rowOffset + x];
 
       if (isInterior) {
         interiorSum += value;

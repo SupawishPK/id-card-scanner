@@ -54,15 +54,18 @@ export function useIdCardScanner({
   config: customConfig,
 }: ScannerOptions) {
   // 1. Unified Configuration
+  const customConfigRef = useRef(customConfig);
+  customConfigRef.current = customConfig;
+
   const config = useMemo(
     () => ({
       ...DEFAULT_SCANNER_CONFIG,
       stableFrames,
       minimumStableMs,
       jpegQuality,
-      ...customConfig,
+      ...(customConfigRef.current ?? {}),
     }),
-    [customConfig, jpegQuality, minimumStableMs, stableFrames],
+    [jpegQuality, minimumStableMs, stableFrames],
   );
 
   // 2. Public UI States
@@ -136,16 +139,17 @@ export function useIdCardScanner({
     resetFrameState();
   }, [resetFrameState, videoRef]);
 
-  const capture = useCallback(() => {
+  const capture = useCallback((): boolean => {
     const video = videoRef.current;
     const fs = frameStateRef.current;
-    if (!video || !fs.sourceRect || capturedRef.current || !fs.readiness.isReady) return;
+    if (!video || !fs.sourceRect || capturedRef.current || !fs.readiness.isReady) return false;
 
     const dataUrl = captureRoiImage(video, fs.sourceRect, config.jpegQuality);
-    if (!dataUrl) return;
+    if (!dataUrl) return false;
 
     capturedRef.current = true;
     setCapturedImage(dataUrl);
+    return true;
   }, [config.jpegQuality, videoRef]);
 
   const toggleTorch = useCallback(async () => {
@@ -251,6 +255,8 @@ export function useIdCardScanner({
         return;
       }
 
+      video.muted = true;
+      video.playsInline = true;
       video.srcObject = stream;
       await video.play();
 
@@ -279,12 +285,8 @@ export function useIdCardScanner({
 
   // 7. Lifecycle & Window / Visibility Event Management
   useEffect(() => {
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
-      if (resizeTimer !== null) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        frameStateRef.current.needsRectRecalc = true;
-      }, 200);
+      frameStateRef.current.needsRectRecalc = true;
     };
 
     const handleVisibilityChange = () => {
@@ -297,14 +299,12 @@ export function useIdCardScanner({
     };
 
     window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     void startCamera();
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopCamera();
     };

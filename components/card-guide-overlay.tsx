@@ -14,10 +14,17 @@ const FRAME_PATHS = [
   "M308.219 97.0298C309.154 97.0298 309.918 97.7958 309.918 98.7319L309.918 177.123C309.918 178.06 309.154 178.826 308.219 178.826L243.298 178.826C242.363 178.826 241.599 178.06 241.599 177.123L241.599 98.7319C241.599 97.7957 242.363 97.0298 243.298 97.0298L308.219 97.0298ZM308.219 93.6255L243.298 93.6255C240.487 93.6255 238.202 95.9149 238.202 98.7319L238.202 177.123C238.202 179.94 240.487 182.23 243.298 182.23L308.219 182.23C311.03 182.23 313.315 179.94 313.315 177.123L313.315 98.7319C313.315 95.9149 311.03 93.6255 308.219 93.6255Z",
 ] as const;
 
-// Lazy pre-compiled Path2D instances
-const COMPILED_FRAME_PATHS: Path2D[] = typeof Path2D !== "undefined"
-  ? FRAME_PATHS.map((pathData) => new Path2D(pathData))
-  : [];
+let cachedCompiledPaths: Path2D[] | null = null;
+function getCompiledFramePaths(): Path2D[] {
+  if (!cachedCompiledPaths) {
+    if (typeof Path2D !== "undefined") {
+      cachedCompiledPaths = FRAME_PATHS.map((pathData) => new Path2D(pathData));
+    } else {
+      return [];
+    }
+  }
+  return cachedCompiledPaths;
+}
 
 const FRAME_COLOR: Record<DetectionState, string> = {
   searching: "rgba(255, 255, 255, 1)",
@@ -32,11 +39,9 @@ type CardGuideOverlayProps = {
 };
 
 export function CardGuideOverlay({ canvasRef, detectionState }: CardGuideOverlayProps) {
-  // ResizeObserver + redraw on resize (mount once, independent of detectionState)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (typeof ResizeObserver === "undefined") return;
 
     const drawGuide = () => {
       const width = canvas.clientWidth;
@@ -54,47 +59,26 @@ export function CardGuideOverlay({ canvasRef, detectionState }: CardGuideOverlay
       const context = canvas.getContext("2d");
       if (!context) return;
 
+      const compiledPaths = getCompiledFramePaths();
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);
       context.save();
       context.scale(width / FRAME_VIEWBOX_WIDTH, height / FRAME_VIEWBOX_HEIGHT);
       context.fillStyle = FRAME_COLOR[detectionState];
-      for (const path of COMPILED_FRAME_PATHS) {
+      for (const path of compiledPaths) {
         context.fill(path);
       }
       context.restore();
     };
 
     drawGuide();
-    const resizeObserver = new ResizeObserver(drawGuide);
-    resizeObserver.observe(canvas);
-    return () => resizeObserver.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- detectionState read from closure inside drawGuide; ResizeObserver re-fires on resize which picks up the latest value
-  }, []);
 
-  // Redraw when detectionState changes (color transition)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (!width || !height) return;
-
-    const context = canvas.getContext("2d");
-    if (!context) return;
-
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    context.clearRect(0, 0, width, height);
-    context.save();
-    context.scale(width / FRAME_VIEWBOX_WIDTH, height / FRAME_VIEWBOX_HEIGHT);
-    context.fillStyle = FRAME_COLOR[detectionState];
-    for (const path of COMPILED_FRAME_PATHS) {
-      context.fill(path);
+    if (typeof ResizeObserver !== "undefined") {
+      const resizeObserver = new ResizeObserver(drawGuide);
+      resizeObserver.observe(canvas);
+      return () => resizeObserver.disconnect();
     }
-    context.restore();
-  }, [detectionState, canvasRef]);
+  }, [canvasRef, detectionState]);
 
   return (
     <canvas

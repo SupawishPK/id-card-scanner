@@ -30,40 +30,36 @@ const CAMERA_ICON = (
   </svg>
 );
 
-const TORCH_ON_ICON = (
+const FLASH_ON_ICON = (
   <svg
     viewBox="0 0 24 24"
     fill="none"
-    xmlns="http://www.w3.org/2000/svg"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className="size-full"
     aria-hidden="true"
   >
-    <path
-      d="M12 2v1m0 18v1m10-10h-1M3 12H2m17.07-7.07l-.39.39M5.32 18.68l-.39.39m13.14-.39l.39.39M5.32 5.32l-.39-.39M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      fill="none"
-    />
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
   </svg>
 );
 
-const TORCH_OFF_ICON = (
+const FLASH_OFF_ICON = (
   <svg
     viewBox="0 0 24 24"
     fill="none"
-    xmlns="http://www.w3.org/2000/svg"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className="size-full"
     aria-hidden="true"
   >
-    <path
-      d="M12 2v1m0 18v1m10-10h-1M3 12H2m17.07-7.07l-.39.39M5.32 18.68l-.39.39m13.14-.39l.39.39M5.32 5.32l-.39-.39M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      fill="none"
-    />
-    <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <path d="M10.513 4.856 13.12 2.17a.5.5 0 0 1 .86.46l-1.377 4.317" />
+    <path d="M15.656 10H20a1 1 0 0 1 .78 1.63l-1.72 1.773" />
+    <path d="M16.273 16.273 10.88 21.83a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14H4a1 1 0 0 1-.78-1.63l4.507-4.643" />
+    <path d="m2 2 20 20" />
   </svg>
 );
 
@@ -106,6 +102,14 @@ const MOCK_VALIDATION_PASS_RATE = 0.5;
 type CaptureMode = "auto" | "manual";
 type ValidationState = "idle" | "checking" | "success" | "error";
 
+const safeVibrate = (pattern: number | number[]) => {
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {
+    // Ignore vibration errors on unsupported or restricted environments
+  }
+};
+
 export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
@@ -143,18 +147,20 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
     let count = COUNTDOWN_START;
     setCountdownValue(count);
-    navigator.vibrate?.(50);
+    safeVibrate(50);
 
     const intervalId = window.setInterval(() => {
       count -= 1;
       if (count > 0) {
         setCountdownValue(count);
-        navigator.vibrate?.(50);
+        safeVibrate(50);
       } else {
         setCountdownValue(null);
-        navigator.vibrate?.([80, 50, 80]);
-        setValidationState("checking");
-        capturePhoto();
+        safeVibrate([80, 50, 80]);
+        const success = capturePhoto();
+        if (success) {
+          setValidationState("checking");
+        }
         window.clearInterval(intervalId);
       }
     }, COUNTDOWN_STEP_MS);
@@ -178,8 +184,10 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   }, [capturedImage]);
 
   const handleCapture = () => {
-    setValidationState("checking");
-    capturePhoto();
+    const success = capturePhoto();
+    if (success) {
+      setValidationState("checking");
+    }
   };
 
   const handleRetry = () => {
@@ -204,13 +212,28 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/70" />
 
-      <header className="absolute inset-x-0 top-0 z-10 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-center text-white">
-        <h1 className="text-lg font-semibold">ถ่ายภาพบัตรประชาชน</h1>
-        <p className="mt-1 text-sm text-white/75">
-          {captureMode === "auto"
-            ? "ระบบจะถ่ายอัตโนมัติเมื่อบัตรอยู่ในตำแหน่งที่เหมาะสม"
-            : "จัดบัตรให้อยู่ในกรอบ แล้วกดถ่ายเมื่อกรอบเป็นสีเขียว"}
-        </p>
+      <header className="absolute inset-x-0 top-0 z-10 flex flex-col px-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white">
+        <div className="relative flex items-center justify-center py-2">
+          <button
+            type="button"
+            aria-label="ย้อนกลับ"
+            className="absolute left-0 grid size-9 place-items-center rounded-full text-white/90 hover:bg-white/10"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <h1 className="text-lg font-semibold tracking-wide">ถ่ายรูปบัตรประชาชน</h1>
+        </div>
+
+        <div className="mt-2 rounded-2xl border border-white/10 bg-black/50 px-5 py-3.5 text-center backdrop-blur-md shadow-lg">
+          <p className="text-base font-semibold leading-snug text-white">
+            กรุณาถ่ายรูปประชาชนด้านหน้า
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-white/80">
+            โดยวางบัตรให้ตรงตามกรอบ
+          </p>
+        </div>
       </header>
 
       <div className="absolute inset-0 flex items-center justify-center px-5">
@@ -225,7 +248,11 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         >
           <CardGuideOverlay canvasRef={guideRef} detectionState={detectionState} />
 
-          <div className="absolute -top-14 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-center text-sm font-medium text-white shadow-lg backdrop-blur-md">
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute -top-14 left-1/2 w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-black/65 px-4 py-2 text-center text-sm font-medium text-white shadow-lg backdrop-blur-md"
+          >
             <span
               className={`mr-2 inline-block size-2.5 rounded-full ${statusUi.dotClassName}`}
             />
@@ -242,11 +269,10 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         >
           <legend className="sr-only">เลือกโหมดถ่ายภาพ</legend>
           <label
-            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${
-              captureMode === "auto"
-                ? "bg-white text-slate-950"
-                : "text-white/70 hover:text-white"
-            }`}
+            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${captureMode === "auto"
+              ? "bg-white text-slate-950"
+              : "text-white/70 hover:text-white"
+              }`}
           >
             <input
               type="radio"
@@ -259,11 +285,10 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             อัตโนมัติ
           </label>
           <label
-            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${
-              captureMode === "manual"
-                ? "bg-white text-slate-950"
-                : "text-white/70 hover:text-white"
-            }`}
+            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${captureMode === "manual"
+              ? "bg-white text-slate-950"
+              : "text-white/70 hover:text-white"
+              }`}
           >
             <input
               type="radio"
@@ -277,53 +302,48 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           </label>
         </fieldset>
 
-        <div className="mb-3 flex w-full items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-white/70">
-            ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
-          </p>
+        <div className="relative flex w-full items-center justify-center">
+          {captureMode === "manual" ? (
+            <button
+              type="button"
+              onClick={handleCapture}
+              disabled={!canCapture}
+              aria-label={canCapture ? "ถ่ายรูปบัตรประชาชน" : "ยังไม่พร้อมถ่าย กรุณาจัดบัตรให้นิ่ง"}
+              className={`size-16 shrink-0 rounded-full transition-[box-shadow,opacity,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${canCapture
+                ? "shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95 cursor-pointer"
+                : "cursor-not-allowed opacity-45"
+                }`}
+            >
+              {CAMERA_ICON}
+            </button>
+          ) : (
+            <div
+              className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${countdownValue !== null
+                ? "border-emerald-400/60 bg-emerald-400/10 text-2xl font-bold text-emerald-400"
+                : "border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white"
+                }`}
+              aria-hidden="true"
+            >
+              {countdownValue !== null ? countdownValue : "AUTO"}
+            </div>
+          )}
+
           {torchAvailable && cameraState === "ready" ? (
             <button
               type="button"
               onClick={() => void toggleTorch()}
               aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
-              className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                isTorchOn
-                  ? "bg-amber-400/90 text-slate-950"
-                  : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-              }`}
+              className={`absolute right-4 top-1/2 -translate-y-1/2 grid size-12 place-items-center rounded-full border shadow-xl backdrop-blur-md transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${isTorchOn
+                ? "border-amber-400/80 bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(251,191,36,0.6)]"
+                : "border-white/15 bg-black/60 text-white shadow-lg hover:border-white/30 hover:bg-black/80"
+                }`}
             >
-              <span className="size-[18px]">
-                {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
+              <span className="size-5">
+                {isTorchOn ? FLASH_ON_ICON : FLASH_OFF_ICON}
               </span>
             </button>
           ) : null}
         </div>
-        {captureMode === "manual" ? (
-          <button
-            type="button"
-            onClick={handleCapture}
-            disabled={!canCapture}
-            aria-label={canCapture ? "ถ่ายรูปบัตรประชาชน" : "ยังไม่พร้อมถ่าย กรุณาจัดบัตรให้นิ่ง"}
-            className={`size-16 shrink-0 rounded-full transition-[box-shadow,opacity,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${
-              canCapture
-                ? "shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95"
-                : "cursor-not-allowed opacity-45"
-            }`}
-          >
-            {CAMERA_ICON}
-          </button>
-        ) : (
-          <div
-            className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${
-              countdownValue !== null
-                ? "border-emerald-400/60 bg-emerald-400/10 text-2xl font-bold text-emerald-400"
-                : "border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white"
-            }`}
-            aria-hidden="true"
-          >
-            {countdownValue !== null ? countdownValue : "AUTO"}
-          </div>
-        )}
       </div>
 
       {cameraState !== "ready" ? (
