@@ -1,48 +1,317 @@
-export const CARD_DETECTION_CONFIG = {
-  // Background padding keeps edges measurable when the card matches the guide.
-  analysisPaddingRatio: 0.08,
-  presenceConfidence: { enter: 0.54, exit: 0.44 },
-  captureConfidence: { enter: 0.56, exit: 0.46 },
-} as const;
+import {
+  CARD_DETECTION_CONFIG,
+  CAPTURE_RULES,
+  CORNER_RADIUS_RATIO,
+  DEFAULT_DETECTION_THRESHOLDS,
+  EDGE_DELTA_THRESHOLD,
+  EDGE_LUMA_DELTA_THRESHOLD,
+  EDGE_SCAN_INSET_RATIO,
+  ID_CARD_ASPECT_RATIO,
+  PRESENCE_RULES,
+  RELAXED_CAPTURE_RULES,
+  RELAXED_PRESENCE_RULES,
+  SCANNER_TIMING,
+} from "./id-card-scanner-config";
 
-const EDGE_SCAN_INSET_RATIO = 0.14;
-const CORNER_RADIUS_RATIO = 0.055;
-const EDGE_LUMA_DELTA_THRESHOLD = 16;
+// -----------------------------------------------------------------------------
+// 1. Camera Management & Utilities
+// -----------------------------------------------------------------------------
 
-const PRESENCE_RULES = {
-  minEdgeScore: 0.42,
-  minCornerScore: 0.12,
-  minAspectScore: 0.48,
-  minSpanCoverage: 0.23,
-  maxSpanCoverage: 1.08,
-} as const;
+export type CameraState = "idle" | "requesting" | "ready" | "error";
 
-const RELAXED_PRESENCE_RULES = {
-  minEdgeScore: 0.4,
-  minCornerScore: 0.08,
-  minAspectScore: 0.38,
-  minSpanCoverage: 0.2,
-  maxSpanCoverage: 1.12,
-} as const;
+export function cameraErrorMessage(error: unknown): string {
+  if (!(error instanceof DOMException)) {
+    return "ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่อีกครั้ง";
+  }
 
-const CAPTURE_RULES = {
-  minEdgeScore: 0.38,
-  minCornerScore: 0.12,
-  minAspectScore: 0.5,
-  // A visually 80% card measures about 79.8% on the 2px sampling grid.
-  minSpanCoverage: 0.79,
-  maxSpanCoverage: 1.04,
-  outerTolerance: 0.02,
-} as const;
+  switch (error.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "ไม่ได้รับสิทธิ์ใช้กล้อง กรุณาอนุญาต Camera ในการตั้งค่าเบราว์เซอร์";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "ไม่พบกล้องบนอุปกรณ์นี้";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "กล้องกำลังถูกใช้งานโดยแอปอื่น กรุณาปิดแอปนั้นแล้วลองใหม่";
+    case "OverconstrainedError":
+      return "กล้องไม่รองรับค่าที่ร้องขอ กรุณาลองใช้อุปกรณ์หรือเบราว์เซอร์อื่น";
+    default:
+      return "เปิดกล้องไม่สำเร็จ กรุณาใช้ HTTPS และตรวจสอบสิทธิ์กล้อง";
+  }
+}
 
-const RELAXED_CAPTURE_RULES = {
-  minEdgeScore: 0.36,
-  minCornerScore: 0.1,
-  minAspectScore: 0.4,
-  minSpanCoverage: 0.74,
-  maxSpanCoverage: 1.08,
-  outerTolerance: 0.035,
-} as const;
+export function isConstraintError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === "OverconstrainedError" || error.name === "NotFoundError")
+  );
+}
+
+export async function requestCamera(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { exact: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    });
+  } catch (error) {
+    if (!isConstraintError(error)) throw error;
+
+    return navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    });
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 2. Geometry & ROI Helper Functions
+// -----------------------------------------------------------------------------
+
+export type SourceRect = {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+};
+
+/** Maps the visible CSS ROI to native video pixels when object-fit is cover. */
+export function getSourceRect(
+  video: HTMLVideoElement,
+  roi: HTMLElement,
+): SourceRect | null {
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  if (!videoWidth || !videoHeight) return null;
+
+  const videoBox = video.getBoundingClientRect();
+  const roiBox = roi.getBoundingClientRect();
+  if (!videoBox.width || !videoBox.height) return null;
+
+  const coverScale = Math.max(
+    videoBox.width / videoWidth,
+    videoBox.height / videoHeight,
+  );
+  const renderedWidth = videoWidth * coverScale;
+  const renderedHeight = videoHeight * coverScale;
+  const cropOffsetX = (renderedWidth - videoBox.width) / 2;
+  const cropOffsetY = (renderedHeight - videoBox.height) / 2;
+
+  const rawX = (roiBox.left - videoBox.left + cropOffsetX) / coverScale;
+  const rawY = (roiBox.top - videoBox.top + cropOffsetY) / coverScale;
+  const rawWidth = roiBox.width / coverScale;
+  const rawHeight = roiBox.height / coverScale;
+  const sx = Math.max(0, Math.min(videoWidth - 1, rawX));
+  const sy = Math.max(0, Math.min(videoHeight - 1, rawY));
+
+  return {
+    sx,
+    sy,
+    sw: Math.max(1, Math.min(videoWidth - sx, rawWidth)),
+    sh: Math.max(1, Math.min(videoHeight - sy, rawHeight)),
+  };
+}
+
+export function expandSourceRect(
+  rect: SourceRect,
+  videoWidth: number,
+  videoHeight: number,
+): SourceRect {
+  const paddingX = rect.sw * CARD_DETECTION_CONFIG.analysisPaddingRatio;
+  const paddingY = rect.sh * CARD_DETECTION_CONFIG.analysisPaddingRatio;
+  const sx = Math.max(0, rect.sx - paddingX);
+  const sy = Math.max(0, rect.sy - paddingY);
+  const right = Math.min(videoWidth, rect.sx + rect.sw + paddingX);
+  const bottom = Math.min(videoHeight, rect.sy + rect.sh + paddingY);
+
+  return { sx, sy, sw: right - sx, sh: bottom - sy };
+}
+
+export function captureRoiImage(
+  video: HTMLVideoElement,
+  rect: SourceRect,
+  quality: number,
+): string | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(rect.sw);
+  canvas.height = Math.round(rect.sh);
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  context.drawImage(
+    video,
+    rect.sx,
+    rect.sy,
+    rect.sw,
+    rect.sh,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  return dataUrl;
+}
+
+// -----------------------------------------------------------------------------
+// 3. Pixel Analysis & Luma Metrics
+// -----------------------------------------------------------------------------
+
+export type FrameAnalysis = {
+  mean: number;
+  variance: number;
+  motion: number;
+  edgeDensity: number;
+};
+
+/** Converts sampled RGBA pixels to luma and computes low-cost frame metrics. */
+export function analyzeFramePixels(
+  pixels: Uint8ClampedArray,
+  currentLuma: Uint8Array,
+  previousLuma: Uint8Array | null,
+  width: number,
+  height: number,
+  step: number,
+): FrameAnalysis {
+  let sum = 0;
+  let sumSquares = 0;
+  let motionSum = 0;
+  let edgeCount = 0;
+  let comparisons = 0;
+  let samples = 0;
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const pixelIndex = y * width + x;
+      const rgbaIndex = pixelIndex * 4;
+      const luma = Math.round(
+        pixels[rgbaIndex] * 0.299 +
+          pixels[rgbaIndex + 1] * 0.587 +
+          pixels[rgbaIndex + 2] * 0.114,
+      );
+      currentLuma[pixelIndex] = luma;
+      sum += luma;
+      sumSquares += luma * luma;
+      samples += 1;
+
+      if (previousLuma) {
+        motionSum += Math.abs(luma - previousLuma[pixelIndex]);
+      }
+      if (x >= step) {
+        if (Math.abs(luma - currentLuma[pixelIndex - step]) > EDGE_DELTA_THRESHOLD) {
+          edgeCount += 1;
+        }
+        comparisons += 1;
+      }
+      if (y >= step) {
+        if (
+          Math.abs(luma - currentLuma[pixelIndex - step * width]) >
+          EDGE_DELTA_THRESHOLD
+        ) {
+          edgeCount += 1;
+        }
+        comparisons += 1;
+      }
+    }
+  }
+
+  const mean = sum / samples;
+  return {
+    mean,
+    variance: Math.max(0, sumSquares / samples - mean * mean),
+    motion: previousLuma ? motionSum / samples : Number.POSITIVE_INFINITY,
+    edgeDensity: comparisons ? edgeCount / comparisons : 0,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// 4. Readiness Accumulator
+// -----------------------------------------------------------------------------
+
+export type ReadinessConfig = {
+  stableFrames: number;
+  minimumStableMs: number;
+  acquireMissGraceFrames: number;
+  readyMissGraceFrames: number;
+};
+
+export type ReadinessState = {
+  stableSince: number | null;
+  stableFrames: number;
+  acquireMisses: number;
+  readyMisses: number;
+  isReady: boolean;
+};
+
+export function createReadinessState(): ReadinessState {
+  return {
+    stableSince: null,
+    stableFrames: 0,
+    acquireMisses: 0,
+    readyMisses: 0,
+    isReady: false,
+  };
+}
+
+export function resetReadiness(state: ReadinessState) {
+  state.stableSince = null;
+  state.stableFrames = 0;
+  state.acquireMisses = 0;
+  state.readyMisses = 0;
+  state.isReady = false;
+}
+
+export function updateReadiness(
+  state: ReadinessState,
+  isCandidate: boolean,
+  now: number,
+  config: ReadinessConfig,
+) {
+  if (isCandidate) {
+    state.acquireMisses = 0;
+    state.readyMisses = 0;
+
+    if (!state.isReady) {
+      state.stableFrames += 1;
+      state.stableSince ??= now;
+      state.isReady =
+        state.stableFrames >= config.stableFrames &&
+        now - state.stableSince >= config.minimumStableMs;
+    }
+    return state.isReady;
+  }
+
+  if (
+    !state.isReady &&
+    state.stableFrames > 0 &&
+    state.acquireMisses < config.acquireMissGraceFrames
+  ) {
+    state.acquireMisses += 1;
+    return false;
+  }
+
+  if (state.isReady && state.readyMisses < config.readyMissGraceFrames) {
+    state.readyMisses += 1;
+    return true;
+  }
+
+  resetReadiness(state);
+  return false;
+}
+
+// -----------------------------------------------------------------------------
+// 5. Card Edge Detection, Presence & Alignment Math
+// -----------------------------------------------------------------------------
 
 type EdgeMeasurement = {
   score: number;
@@ -145,7 +414,6 @@ function scoreEdgePositions(
   const directionScore = clamp01((consistentDirections / positionCount - 0.5) * 2);
 
   return {
-    // Random texture creates gradients, but not one straight, consistent side.
     score: support * (0.08 + alignment * 0.72 + directionScore * 0.2),
     position: mean / dimension,
   };
@@ -503,7 +771,6 @@ function guidelineEdges() {
   return { near, far: 1 - near, span: 1 - near * 2 };
 }
 
-/** Detects a plausible ID-1 rectangle anywhere inside the guideline. */
 export function detectCardPresence(
   luma: Uint8Array,
   width: number,
@@ -533,8 +800,6 @@ export function detectCardPresence(
     ),
   };
 
-  // Re-score each side only over the detected card span. This lets a small,
-  // continuous side score well without making random full-frame texture pass.
   const refinementBand = 0.04;
   const spanInset = 0.018;
   const edges: CardEdges = {
@@ -616,7 +881,6 @@ function isInsideGuide(
   );
 }
 
-/** Scores whether a detected card is large and aligned enough to capture. */
 export function detectCaptureAlignment(
   luma: Uint8Array,
   width: number,
@@ -667,5 +931,206 @@ export function detectCaptureAlignment(
         guide.far,
         RELAXED_CAPTURE_RULES.outerTolerance,
       ),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// 6. Frame Processing Pipeline Evaluation
+// -----------------------------------------------------------------------------
+
+export type DetectionState =
+  | "searching"
+  | "card-detected"
+  | "hold-still"
+  | "stable";
+
+export type ScannerDetectionThresholds = {
+  sampleIntervalMs: number;
+  motionEnterThreshold: number;
+  motionExitThreshold: number;
+  presenceConfidenceEnter: number;
+  presenceConfidenceExit: number;
+  captureConfidenceEnter: number;
+  captureConfidenceExit: number;
+};
+
+export type FrameProcessingParams = {
+  video: HTMLVideoElement;
+  roi: HTMLElement;
+  now: number;
+  canvas: HTMLCanvasElement | null;
+  previousLuma: Uint8Array | null;
+  currentLuma: Uint8Array | null;
+  readiness: ReadinessState;
+  readinessConfig: ReadinessConfig;
+  hasDetectedCard: boolean;
+  isCaptureAligned: boolean;
+  thresholds?: Partial<ScannerDetectionThresholds>;
+};
+
+export type FrameProcessingResult = {
+  sourceRect: SourceRect;
+  canvas: HTMLCanvasElement;
+  previousLuma: Uint8Array;
+  currentLuma: Uint8Array;
+  detectionState: DetectionState;
+  hasDetectedCard: boolean;
+  isCaptureAligned: boolean;
+  isCaptureReady: boolean;
+};
+
+export function processScannerFrame({
+  video,
+  roi,
+  now,
+  canvas: inputCanvas,
+  previousLuma,
+  currentLuma: inputCurrentLuma,
+  readiness,
+  readinessConfig,
+  hasDetectedCard: prevHasDetectedCard,
+  isCaptureAligned: prevIsCaptureAligned,
+  thresholds: customThresholds,
+}: FrameProcessingParams): FrameProcessingResult | null {
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
+
+  const thresholds = { ...DEFAULT_DETECTION_THRESHOLDS, ...customThresholds };
+
+  const sourceRect = getSourceRect(video, roi);
+  if (!sourceRect) return null;
+
+  const analysisSourceRect = expandSourceRect(
+    sourceRect,
+    video.videoWidth,
+    video.videoHeight,
+  );
+
+  let canvas = inputCanvas;
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.width = SCANNER_TIMING.ANALYSIS_WIDTH;
+    canvas.height = SCANNER_TIMING.ANALYSIS_HEIGHT;
+  }
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+
+  context.drawImage(
+    video,
+    analysisSourceRect.sx,
+    analysisSourceRect.sy,
+    analysisSourceRect.sw,
+    analysisSourceRect.sh,
+    0,
+    0,
+    SCANNER_TIMING.ANALYSIS_WIDTH,
+    SCANNER_TIMING.ANALYSIS_HEIGHT,
+  );
+
+  const pixels = context.getImageData(
+    0,
+    0,
+    SCANNER_TIMING.ANALYSIS_WIDTH,
+    SCANNER_TIMING.ANALYSIS_HEIGHT,
+  ).data;
+
+  const pixelCount = SCANNER_TIMING.ANALYSIS_WIDTH * SCANNER_TIMING.ANALYSIS_HEIGHT;
+  let currentLuma = inputCurrentLuma;
+  if (!currentLuma || currentLuma.length !== pixelCount) {
+    currentLuma = new Uint8Array(pixelCount);
+  }
+
+  const step = 2;
+  const { mean, variance, motion, edgeDensity } = analyzeFramePixels(
+    pixels,
+    currentLuma,
+    previousLuma,
+    SCANNER_TIMING.ANALYSIS_WIDTH,
+    SCANNER_TIMING.ANALYSIS_HEIGHT,
+    step,
+  );
+
+  const nextPreviousLuma = currentLuma;
+  const nextCurrentLuma = previousLuma ?? new Uint8Array(pixelCount);
+
+  const hasUsableLight = mean > 42 && mean < 225;
+  const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.012;
+  const hasPresenceDetails =
+    mean > 24 && mean < 235 && variance > 120 && edgeDensity > 0.003;
+
+  const cardPresence = detectCardPresence(
+    currentLuma,
+    SCANNER_TIMING.ANALYSIS_WIDTH,
+    SCANNER_TIMING.ANALYSIS_HEIGHT,
+    step,
+  );
+
+  const presenceConfidenceThreshold = prevHasDetectedCard
+    ? thresholds.presenceConfidenceExit
+    : thresholds.presenceConfidenceEnter;
+
+  const meetsPresenceGeometry = prevHasDetectedCard
+    ? cardPresence.meetsRelaxedCard
+    : cardPresence.meetsMinimumCard;
+
+  const hasPresenceCard =
+    hasPresenceDetails &&
+    meetsPresenceGeometry &&
+    cardPresence.cardPresenceConfidence >= presenceConfidenceThreshold;
+
+  const captureAlignment = hasCardDetails
+    ? detectCaptureAlignment(
+        currentLuma,
+        SCANNER_TIMING.ANALYSIS_WIDTH,
+        SCANNER_TIMING.ANALYSIS_HEIGHT,
+        step,
+      )
+    : null;
+
+  const captureConfidenceThreshold = prevIsCaptureAligned
+    ? thresholds.captureConfidenceExit
+    : thresholds.captureConfidenceEnter;
+
+  const meetsCaptureGeometry = prevIsCaptureAligned
+    ? captureAlignment?.meetsRelaxedGeometry
+    : captureAlignment?.meetsMinimumGeometry;
+
+  const isCaptureAligned =
+    captureAlignment !== null &&
+    meetsCaptureGeometry === true &&
+    captureAlignment.captureConfidence >= captureConfidenceThreshold;
+
+  const hasDetectedCard = hasPresenceCard || isCaptureAligned;
+
+  const wasCaptureReady = readiness.isReady;
+  const motionThreshold = wasCaptureReady
+    ? thresholds.motionExitThreshold
+    : thresholds.motionEnterThreshold;
+
+  const isMotionStable = previousLuma !== null && motion < motionThreshold;
+
+  const isCaptureReady = updateReadiness(
+    readiness,
+    isCaptureAligned && isMotionStable,
+    now,
+    readinessConfig,
+  );
+
+  const detectionState: DetectionState = isCaptureReady
+    ? "stable"
+    : isCaptureAligned
+      ? "hold-still"
+      : hasDetectedCard
+        ? "card-detected"
+        : "searching";
+
+  return {
+    sourceRect,
+    canvas,
+    previousLuma: nextPreviousLuma,
+    currentLuma: nextCurrentLuma,
+    detectionState,
+    hasDetectedCard,
+    isCaptureAligned,
+    isCaptureReady,
   };
 }

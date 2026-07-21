@@ -6,7 +6,7 @@ import {
   useIdCardScanner,
 } from "@/hooks/use-id-card-scanner";
 import { CardGuideOverlay } from "@/components/card-guide-overlay";
-import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
+import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card-scanner-config";
 
 type IdCardScannerProps = {
   className?: string;

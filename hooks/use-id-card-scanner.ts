@@ -8,194 +8,106 @@ import {
   useRef,
   useState,
 } from "react";
-import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card";
 import {
-  CARD_DETECTION_CONFIG,
-  detectCardPresence,
-  detectCaptureAlignment,
-} from "@/lib/card-edge-detection";
-import { analyzeFramePixels } from "@/lib/frame-analysis";
+  DEFAULT_SCANNER_CONFIG,
+  type ScannerConfig,
+} from "@/lib/id-card-scanner-config";
 import {
+  type CameraState,
+  type DetectionState,
+  type SourceRect,
+  cameraErrorMessage,
+  captureRoiImage,
   createReadinessState,
+  processScannerFrame,
+  requestCamera,
   resetReadiness,
-  updateReadiness,
-} from "@/lib/scanner-readiness";
+} from "@/lib/id-card-scanner-engine";
 
-const ANALYSIS_HEIGHT = 240;
-const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT * ID_CARD_ASPECT_RATIO);
-const SAMPLE_INTERVAL_MS = 1000 / 15;
-// Hand-held phones naturally produce small frame-to-frame luma changes. Use a
-// stricter threshold to enter the ready state and a wider one to leave it, then
-// tolerate a short burst of bad samples so the UI does not flicker.
-const MOTION_ENTER_THRESHOLD = 11;
-const MOTION_EXIT_THRESHOLD = 15;
-const ACQUIRE_MISS_GRACE_FRAMES = 2;
-const READY_MISS_GRACE_FRAMES = 5;
+export type { DetectionState, CameraState, ScannerConfig };
+export { DEFAULT_SCANNER_CONFIG };
 
-type CameraState = "idle" | "requesting" | "ready" | "error";
-export type DetectionState =
-  | "searching"
-  | "card-detected"
-  | "hold-still"
-  | "stable";
-
-type ScannerOptions = {
+export type ScannerOptions = {
+  /** Reference ถึงตัวแปร `<video>` element ที่แสดงภาพสดจากกล้อง */
   videoRef: RefObject<HTMLVideoElement | null>;
+  /** Reference ถึงตัวแปร HTML Element ที่เป็นกรอบสแกนบัตร (ROI Guide) */
   roiRef: RefObject<HTMLElement | null>;
+  /** จำนวนเฟรมขั้นต่ำที่ต้องการให้นิ่ง */
   stableFrames?: number;
+  /** ระยะเวลาขั้นต่ำ (ms) ที่ต้องการให้นิ่ง */
   minimumStableMs?: number;
+  /** คุณภาพไฟล์ภาพ JPEG (0.0 - 1.0) */
   jpegQuality?: number;
+  /** สามารถส่งค่า Config เพื่อปรับแต่งความแม่นยำ/ความเร็วในการสแกนได้เพิ่มเติม */
+  config?: ScannerConfig;
 };
-
-type SourceRect = { sx: number; sy: number; sw: number; sh: number };
-
-function expandSourceRect(
-  rect: SourceRect,
-  videoWidth: number,
-  videoHeight: number,
-): SourceRect {
-  const paddingX = rect.sw * CARD_DETECTION_CONFIG.analysisPaddingRatio;
-  const paddingY = rect.sh * CARD_DETECTION_CONFIG.analysisPaddingRatio;
-  const sx = Math.max(0, rect.sx - paddingX);
-  const sy = Math.max(0, rect.sy - paddingY);
-  const right = Math.min(videoWidth, rect.sx + rect.sw + paddingX);
-  const bottom = Math.min(videoHeight, rect.sy + rect.sh + paddingY);
-
-  return { sx, sy, sw: right - sx, sh: bottom - sy };
-}
-
-function cameraErrorMessage(error: unknown): string {
-  if (!(error instanceof DOMException)) {
-    return "ไม่สามารถเปิดกล้องได้ กรุณาลองใหม่อีกครั้ง";
-  }
-
-  switch (error.name) {
-    case "NotAllowedError":
-    case "SecurityError":
-      return "ไม่ได้รับสิทธิ์ใช้กล้อง กรุณาอนุญาต Camera ในการตั้งค่าเบราว์เซอร์";
-    case "NotFoundError":
-    case "DevicesNotFoundError":
-      return "ไม่พบกล้องบนอุปกรณ์นี้";
-    case "NotReadableError":
-    case "TrackStartError":
-      return "กล้องกำลังถูกใช้งานโดยแอปอื่น กรุณาปิดแอปนั้นแล้วลองใหม่";
-    case "OverconstrainedError":
-      return "กล้องไม่รองรับค่าที่ร้องขอ กรุณาลองใช้อุปกรณ์หรือเบราว์เซอร์อื่น";
-    default:
-      return "เปิดกล้องไม่สำเร็จ กรุณาใช้ HTTPS และตรวจสอบสิทธิ์กล้อง";
-  }
-}
-
-function isConstraintError(error: unknown) {
-  return (
-    error instanceof DOMException &&
-    (error.name === "OverconstrainedError" || error.name === "NotFoundError")
-  );
-}
-
-async function requestCamera(): Promise<MediaStream> {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { exact: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
-  } catch (error) {
-    if (!isConstraintError(error)) throw error;
-
-    return navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
-  }
-}
-
-/** Maps the visible CSS ROI to native video pixels when object-fit is cover. */
-function getSourceRect(video: HTMLVideoElement, roi: HTMLElement): SourceRect | null {
-  const videoWidth = video.videoWidth;
-  const videoHeight = video.videoHeight;
-  if (!videoWidth || !videoHeight) return null;
-
-  const videoBox = video.getBoundingClientRect();
-  const roiBox = roi.getBoundingClientRect();
-  if (!videoBox.width || !videoBox.height) return null;
-
-  const coverScale = Math.max(
-    videoBox.width / videoWidth,
-    videoBox.height / videoHeight,
-  );
-  const renderedWidth = videoWidth * coverScale;
-  const renderedHeight = videoHeight * coverScale;
-  const cropOffsetX = (renderedWidth - videoBox.width) / 2;
-  const cropOffsetY = (renderedHeight - videoBox.height) / 2;
-
-  const rawX = (roiBox.left - videoBox.left + cropOffsetX) / coverScale;
-  const rawY = (roiBox.top - videoBox.top + cropOffsetY) / coverScale;
-  const rawWidth = roiBox.width / coverScale;
-  const rawHeight = roiBox.height / coverScale;
-  const sx = Math.max(0, Math.min(videoWidth - 1, rawX));
-  const sy = Math.max(0, Math.min(videoHeight - 1, rawY));
-
-  return {
-    sx,
-    sy,
-    sw: Math.max(1, Math.min(videoWidth - sx, rawWidth)),
-    sh: Math.max(1, Math.min(videoHeight - sy, rawHeight)),
-  };
-}
 
 export function useIdCardScanner({
   videoRef,
   roiRef,
-  stableFrames = 4,
-  minimumStableMs = 180,
-  jpegQuality = 0.85,
+  stableFrames = DEFAULT_SCANNER_CONFIG.stableFrames,
+  minimumStableMs = DEFAULT_SCANNER_CONFIG.minimumStableMs,
+  jpegQuality = DEFAULT_SCANNER_CONFIG.jpegQuality,
+  config: customConfig,
 }: ScannerOptions) {
+  // Merge configurations
+  const config = useMemo(
+    () => ({
+      ...DEFAULT_SCANNER_CONFIG,
+      stableFrames,
+      minimumStableMs,
+      jpegQuality,
+      ...customConfig,
+    }),
+    [customConfig, jpegQuality, minimumStableMs, stableFrames],
+  );
+
+  // Public UI State
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectionState, setDetectionState] = useState<DetectionState>("searching");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+
+  // Configuration for readiness tracking accumulator
   const readinessConfig = useMemo(
     () => ({
-      stableFrames,
-      minimumStableMs,
-      acquireMissGraceFrames: ACQUIRE_MISS_GRACE_FRAMES,
-      readyMissGraceFrames: READY_MISS_GRACE_FRAMES,
+      stableFrames: config.stableFrames,
+      minimumStableMs: config.minimumStableMs,
+      acquireMissGraceFrames: config.acquireMissGraceFrames,
+      readyMissGraceFrames: config.readyMissGraceFrames,
     }),
-    [minimumStableMs, stableFrames],
+    [config],
   );
 
+  // Internal Scanner Refs & Buffers
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previousLumaRef = useRef<Uint8Array | null>(null);
   const currentLumaRef = useRef<Uint8Array | null>(null);
   const sourceRectRef = useRef<SourceRect | null>(null);
-  const lastSampleAtRef = useRef(0);
   const readinessRef = useRef(createReadinessState());
   const hasDetectedCardRef = useRef(false);
   const isCaptureAlignedRef = useRef(false);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
   const cameraRequestIdRef = useRef(0);
+  const lastSampleAtRef = useRef(0);
 
+  // Stop camera stream & reset scanner pipeline state
   const stopCamera = useCallback(() => {
     cameraRequestIdRef.current += 1;
     runningRef.current = false;
+
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
+
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+
     previousLumaRef.current = null;
     currentLumaRef.current = null;
     sourceRectRef.current = null;
@@ -205,158 +117,72 @@ export function useIdCardScanner({
     isCaptureAlignedRef.current = false;
   }, [videoRef]);
 
+  // Capture current ROI image when card scanner is ready
   const capture = useCallback(() => {
     const video = videoRef.current;
     const rect = sourceRectRef.current;
     if (!video || !rect || capturedRef.current || !readinessRef.current.isReady) return;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(rect.sw);
-    canvas.height = Math.round(rect.sh);
-    const context = canvas.getContext("2d");
-    if (!context) return;
+    const dataUrl = captureRoiImage(video, rect, config.jpegQuality);
+    if (!dataUrl) return;
 
-    context.drawImage(
-      video,
-      rect.sx,
-      rect.sy,
-      rect.sw,
-      rect.sh,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    );
     capturedRef.current = true;
-    setCapturedImage(canvas.toDataURL("image/jpeg", jpegQuality));
-    context.clearRect(0, 0, canvas.width, canvas.height);
-  }, [jpegQuality, videoRef]);
+    setCapturedImage(dataUrl);
+  }, [config.jpegQuality, videoRef]);
 
+  // Process a single camera video frame
   const processSample = useCallback(
     (now: number) => {
       const video = videoRef.current;
       const roi = roiRef.current;
-      if (!video || !roi || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+      if (!video || !roi) return;
 
-      const sourceRect = getSourceRect(video, roi);
-      if (!sourceRect) return;
-      sourceRectRef.current = sourceRect;
-      const analysisSourceRect = expandSourceRect(
-        sourceRect,
-        video.videoWidth,
-        video.videoHeight,
-      );
-
-      let canvas = analysisCanvasRef.current;
-      if (!canvas) {
-        canvas = document.createElement("canvas");
-        canvas.width = ANALYSIS_WIDTH;
-        canvas.height = ANALYSIS_HEIGHT;
-        analysisCanvasRef.current = canvas;
-      }
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return;
-
-      context.drawImage(
+      const result = processScannerFrame({
         video,
-        analysisSourceRect.sx,
-        analysisSourceRect.sy,
-        analysisSourceRect.sw,
-        analysisSourceRect.sh,
-        0,
-        0,
-        ANALYSIS_WIDTH,
-        ANALYSIS_HEIGHT,
-      );
-
-      const pixels = context.getImageData(0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT).data;
-      const pixelCount = ANALYSIS_WIDTH * ANALYSIS_HEIGHT;
-      let current = currentLumaRef.current;
-      if (!current || current.length !== pixelCount) current = new Uint8Array(pixelCount);
-      const previous = previousLumaRef.current;
-      const step = 2;
-      const { mean, variance, motion, edgeDensity } = analyzeFramePixels(
-        pixels,
-        current,
-        previous,
-        ANALYSIS_WIDTH,
-        ANALYSIS_HEIGHT,
-        step,
-      );
-
-      previousLumaRef.current = current;
-      currentLumaRef.current = previous ?? new Uint8Array(pixelCount);
-      const hasUsableLight = mean > 42 && mean < 225;
-      const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.012;
-      const hasPresenceDetails =
-        mean > 24 && mean < 235 && variance > 120 && edgeDensity > 0.003;
-      const cardPresence = detectCardPresence(
-        current,
-        ANALYSIS_WIDTH,
-        ANALYSIS_HEIGHT,
-        step,
-      );
-      const presenceConfidenceThreshold = hasDetectedCardRef.current
-        ? CARD_DETECTION_CONFIG.presenceConfidence.exit
-        : CARD_DETECTION_CONFIG.presenceConfidence.enter;
-      const meetsPresenceGeometry = hasDetectedCardRef.current
-        ? cardPresence.meetsRelaxedCard
-        : cardPresence.meetsMinimumCard;
-      const hasPresenceCard =
-        hasPresenceDetails &&
-        meetsPresenceGeometry &&
-        cardPresence.cardPresenceConfidence >= presenceConfidenceThreshold;
-      // Capture geometry is evaluated independently. A strict presence miss
-      // must never block a card that already covers at least 80% of the frame.
-      const captureAlignment = hasCardDetails
-        ? detectCaptureAlignment(current, ANALYSIS_WIDTH, ANALYSIS_HEIGHT, step)
-        : null;
-      const captureConfidenceThreshold = isCaptureAlignedRef.current
-        ? CARD_DETECTION_CONFIG.captureConfidence.exit
-        : CARD_DETECTION_CONFIG.captureConfidence.enter;
-      const meetsCaptureGeometry = isCaptureAlignedRef.current
-        ? captureAlignment?.meetsRelaxedGeometry
-        : captureAlignment?.meetsMinimumGeometry;
-      const isCaptureAligned =
-        captureAlignment !== null &&
-        meetsCaptureGeometry === true &&
-        captureAlignment.captureConfidence >= captureConfidenceThreshold;
-      const hasDetectedCard = hasPresenceCard || isCaptureAligned;
-      hasDetectedCardRef.current = hasDetectedCard;
-      isCaptureAlignedRef.current = isCaptureAligned;
-      const wasCaptureReady = readinessRef.current.isReady;
-      const motionThreshold = wasCaptureReady
-        ? MOTION_EXIT_THRESHOLD
-        : MOTION_ENTER_THRESHOLD;
-      const isMotionStable = previous !== null && motion < motionThreshold;
-      const isCaptureReady = updateReadiness(
-        readinessRef.current,
-        isCaptureAligned && isMotionStable,
+        roi,
         now,
+        canvas: analysisCanvasRef.current,
+        previousLuma: previousLumaRef.current,
+        currentLuma: currentLumaRef.current,
+        readiness: readinessRef.current,
         readinessConfig,
-      );
-      const nextState: DetectionState = isCaptureReady
-        ? "stable"
-        : isCaptureAligned
-          ? "hold-still"
-          : hasDetectedCard
-            ? "card-detected"
-            : "searching";
+        hasDetectedCard: hasDetectedCardRef.current,
+        isCaptureAligned: isCaptureAlignedRef.current,
+        thresholds: {
+          sampleIntervalMs: config.sampleIntervalMs,
+          motionEnterThreshold: config.motionEnterThreshold,
+          motionExitThreshold: config.motionExitThreshold,
+          presenceConfidenceEnter: config.presenceConfidenceEnter,
+          presenceConfidenceExit: config.presenceConfidenceExit,
+          captureConfidenceEnter: config.captureConfidenceEnter,
+          captureConfidenceExit: config.captureConfidenceExit,
+        },
+      });
 
-      setDetectionState((currentState) =>
-        currentState === nextState ? currentState : nextState,
+      if (!result) return;
+
+      sourceRectRef.current = result.sourceRect;
+      analysisCanvasRef.current = result.canvas;
+      previousLumaRef.current = result.previousLuma;
+      currentLumaRef.current = result.currentLuma;
+      hasDetectedCardRef.current = result.hasDetectedCard;
+      isCaptureAlignedRef.current = result.isCaptureAligned;
+
+      setDetectionState((current) =>
+        current === result.detectionState ? current : result.detectionState,
       );
     },
-    [readinessConfig, roiRef, videoRef],
+    [config, readinessConfig, roiRef, videoRef],
   );
 
+  // Start continuous frame sampling loop
   const startDetectionLoop = useCallback(() => {
     if (runningRef.current) return;
     runningRef.current = true;
 
     const tick = (now: number) => {
       if (!runningRef.current) return;
-      if (!capturedRef.current && now - lastSampleAtRef.current >= SAMPLE_INTERVAL_MS) {
+      if (!capturedRef.current && now - lastSampleAtRef.current >= config.sampleIntervalMs) {
         lastSampleAtRef.current = now;
         processSample(now);
       }
@@ -364,8 +190,9 @@ export function useIdCardScanner({
     };
 
     animationFrameRef.current = requestAnimationFrame(tick);
-  }, [processSample]);
+  }, [config.sampleIntervalMs, processSample]);
 
+  // Start hardware camera stream and detection loop
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState("error");
@@ -385,11 +212,13 @@ export function useIdCardScanner({
         return;
       }
       streamRef.current = stream;
+
       const video = videoRef.current;
       if (!video) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
+
       video.srcObject = stream;
       await video.play();
       setCameraState("ready");
@@ -402,6 +231,7 @@ export function useIdCardScanner({
     }
   }, [startDetectionLoop, stopCamera, videoRef]);
 
+  // Reset captured image and restart frame analysis
   const retryCapture = useCallback(() => {
     capturedRef.current = false;
     previousLumaRef.current = null;
@@ -413,6 +243,7 @@ export function useIdCardScanner({
     setDetectionState("searching");
   }, []);
 
+  // Initialize camera stream on mount and cleanup on unmount
   useEffect(() => {
     void startCamera();
     return stopCamera;
@@ -427,5 +258,6 @@ export function useIdCardScanner({
     retryCapture,
     retryCamera: startCamera,
     stopCamera,
+    config,
   };
 }
