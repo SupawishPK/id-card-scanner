@@ -330,7 +330,7 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
           ) : (
             <div
               className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${autoProgress > 0
-                ? "border-emerald-400/80 bg-emerald-400/20 text-xs font-bold text-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.5)]"
+                ? "border-emerald-400/60 bg-emerald-400/15 text-xs font-bold text-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.25)]"
                 : "border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white"
                 }`}
               aria-hidden="true"

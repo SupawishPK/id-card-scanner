@@ -83,25 +83,25 @@ export function CardGuideOverlay({ canvasRef, detectionState, autoProgress = 0 }
         context.fill(path);
       }
 
-      // Render high-contrast dual-pass Laser Beam stroke (Electric Mint-Cyan Glow + Crisp White Core)
+      // Render soft, elegant progress stroke line (Emerald Green Glow)
       if (autoProgress > 0) {
         const outerPath = getCompiledOuterPath();
         if (outerPath) {
           const totalPerimeter = 1012;
           const progressLength = Math.min(1, Math.max(0, autoProgress)) * totalPerimeter;
 
-          // Pass 1: Neon Electric Mint-Cyan Glow Aura
-          context.strokeStyle = "rgba(0, 245, 212, 0.95)";
-          context.lineWidth = 6;
+          // Pass 1: Soft Emerald Glow
+          context.strokeStyle = "rgba(52, 211, 153, 0.85)";
+          context.lineWidth = 3.5;
           context.lineCap = "round";
-          context.shadowColor = "rgba(0, 245, 212, 1)";
-          context.shadowBlur = 18;
+          context.shadowColor = "rgba(52, 211, 153, 0.5)";
+          context.shadowBlur = 8;
           context.setLineDash([progressLength, totalPerimeter]);
           context.stroke(outerPath);
 
-          // Pass 2: Crisp Bright White Core Line
-          context.strokeStyle = "#ffffff";
-          context.lineWidth = 2.5;
+          // Pass 2: Soft Mint Line
+          context.strokeStyle = "rgba(209, 250, 229, 0.9)";
+          context.lineWidth = 1.8;
           context.shadowBlur = 0;
           context.setLineDash([progressLength, totalPerimeter]);
           context.stroke(outerPath);
@@ -125,7 +125,7 @@ export function CardGuideOverlay({ canvasRef, detectionState, autoProgress = 0 }
       ref={canvasRef}
       className={`pointer-events-none absolute inset-0 size-full rounded-xl transition-[box-shadow,background-color] duration-200 ${
         detectionState === "stable"
-          ? "bg-emerald-400/5 shadow-[0_0_0_9999px_rgba(2,6,23,0.42),0_0_28px_rgba(52,211,153,0.7)]"
+          ? "bg-emerald-400/5 shadow-[0_0_0_9999px_rgba(2,6,23,0.42),0_0_14px_rgba(52,211,153,0.35)]"
           : "bg-transparent shadow-[0_0_0_9999px_rgba(2,6,23,0.5)]"
       }`}
       aria-hidden="true"
