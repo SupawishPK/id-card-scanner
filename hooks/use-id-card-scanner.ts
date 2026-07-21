@@ -15,6 +15,7 @@ import {
 import {
   type CameraState,
   type DetectionState,
+  type DistanceHint,
   type SourceRect,
   cameraErrorMessage,
   captureRoiImage,
@@ -27,7 +28,7 @@ import {
   setTorch,
 } from "@/lib/id-card-scanner-engine";
 
-export type { DetectionState, CameraState, ScannerConfig };
+export type { DetectionState, CameraState, DistanceHint, ScannerConfig };
 export { DEFAULT_SCANNER_CONFIG };
 
 export type ScannerOptions = {
@@ -72,6 +73,7 @@ export function useIdCardScanner({
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectionState, setDetectionState] = useState<DetectionState>("searching");
+  const [distanceHint, setDistanceHint] = useState<DistanceHint>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
@@ -203,6 +205,9 @@ export function useIdCardScanner({
       setDetectionState((current) =>
         current === result.detectionState ? current : result.detectionState,
       );
+      setDistanceHint((current) =>
+        current === result.distanceHint ? current : result.distanceHint,
+      );
     },
     [config, roiRef, videoRef],
   );
@@ -314,6 +319,7 @@ export function useIdCardScanner({
     cameraState,
     cameraError,
     detectionState,
+    distanceHint,
     capturedImage,
     torchAvailable,
     isTorchOn,

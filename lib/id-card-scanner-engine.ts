@@ -1047,6 +1047,8 @@ export type FrameProcessingParams = {
   sourceRect?: SourceRect | null;
 };
 
+export type DistanceHint = "too-far" | "too-close" | "fit" | null;
+
 export type FrameProcessingResult = {
   sourceRect: SourceRect;
   canvas: HTMLCanvasElement;
@@ -1056,6 +1058,7 @@ export type FrameProcessingResult = {
   hasDetectedCard: boolean;
   isCaptureAligned: boolean;
   isCaptureReady: boolean;
+  distanceHint: DistanceHint;
 };
 
 export function processScannerFrame({
@@ -1205,6 +1208,15 @@ export function processScannerFrame({
         ? "card-detected"
         : "searching";
 
+  const activeCoverage = captureAlignment?.coverageScore ?? cardPresence.spanCoverage;
+  const distanceHint: DistanceHint = hasDetectedCard
+    ? activeCoverage < 0.85
+      ? "too-far"
+      : activeCoverage > 1.05
+        ? "too-close"
+        : "fit"
+    : null;
+
   return {
     sourceRect,
     canvas,
@@ -1214,5 +1226,6 @@ export function processScannerFrame({
     hasDetectedCard,
     isCaptureAligned,
     isCaptureReady,
+    distanceHint,
   };
 }
