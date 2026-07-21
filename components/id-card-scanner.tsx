@@ -127,24 +127,12 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
 
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
-
-  const getDynamicStatusUi = () => {
-    if (autoProgress > 0) return AUTO_STABLE_STATUS_UI;
-    if (detectionState === "stable") return AUTO_STABLE_STATUS_UI;
-    if (detectionState === "hold-still") return STATUS_UI["hold-still"];
-    if (detectionState === "card-detected") {
-      if (distanceHint === "too-far") {
-        return { text: "ขยับบัตรเข้ามาใกล้ขึ้น", dotClassName: "bg-rose-400 shadow-[0_0_8px_#fb7185]" };
-      }
-      if (distanceHint === "too-close") {
-        return { text: "ขยับบัตรให้ออกห่างอีกนิด", dotClassName: "bg-rose-400 shadow-[0_0_8px_#fb7185]" };
-      }
-      return STATUS_UI["card-detected"];
-    }
-    return STATUS_UI.searching;
-  };
-
-  const statusUi = getDynamicStatusUi();
+  const statusUi =
+    autoProgress > 0
+      ? AUTO_STABLE_STATUS_UI
+      : captureMode === "auto" && detectionState === "stable"
+        ? AUTO_STABLE_STATUS_UI
+        : STATUS_UI[detectionState];
 
   // Smooth Auto-capture progress: 0.0 → 1.0 over 1,800ms
   useEffect(() => {
