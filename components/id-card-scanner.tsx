@@ -94,7 +94,13 @@ const AUTO_STABLE_STATUS_UI = {
   text: "ตำแหน่งดีแล้ว กำลังถ่ายอัตโนมัติ…",
 } as const;
 
-const AUTO_CAPTURE_DELAY_MS = 700;
+const COUNTDOWN_STATUS_UI = {
+  ...STATUS_UI.stable,
+  text: "ถือนิ่ง ๆ กำลังถ่ายภาพ…",
+} as const;
+
+const COUNTDOWN_START = 3;
+const COUNTDOWN_STEP_MS = 400;
 const MOCK_VALIDATION_DELAY_MS = 1800;
 const MOCK_VALIDATION_PASS_RATE = 0.5;
 type CaptureMode = "auto" | "manual";
@@ -104,7 +110,10 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
+  const [countdownValue, setCountdownValue] = useState<number | null>(null);
+  const [showExposure, setShowExposure] = useState(false);
   const [validationState, setValidationState] = useState<ValidationState>("idle");
+  const exposureDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     cameraState,
     cameraError,
@@ -112,6 +121,9 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
     capturedImage,
     torchAvailable,
     isTorchOn,
+    exposureRange,
+    exposureValue,
+    setExposureValue,
     capturePhoto,
     toggleTorch,
     retryCapture,
@@ -121,20 +133,48 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
   const statusUi =
-    captureMode === "auto" && detectionState === "stable"
-      ? AUTO_STABLE_STATUS_UI
-      : STATUS_UI[detectionState];
+    countdownValue !== null
+      ? COUNTDOWN_STATUS_UI
+      : captureMode === "auto" && detectionState === "stable"
+        ? AUTO_STABLE_STATUS_UI
+        : STATUS_UI[detectionState];
+
+  // Auto-capture countdown: 3 → 2 → 1 → capture
+  useEffect(() => {
+    if (captureMode !== "auto" || !canCapture) {
+      setCountdownValue(null);
+      return;
+    }
+
+    let count = COUNTDOWN_START;
+    setCountdownValue(count);
+    navigator.vibrate?.(50);
+
+    const intervalId = window.setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setCountdownValue(count);
+        navigator.vibrate?.(50);
+      } else {
+        setCountdownValue(null);
+        navigator.vibrate?.([80, 50, 80]);
+        setValidationState("checking");
+        capturePhoto();
+        window.clearInterval(intervalId);
+      }
+    }, COUNTDOWN_STEP_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+      setCountdownValue(null);
+    };
+  }, [canCapture, captureMode, capturePhoto]);
 
   useEffect(() => {
-    if (captureMode !== "auto" || !canCapture) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setValidationState("checking");
-      capturePhoto();
-    }, AUTO_CAPTURE_DELAY_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [canCapture, captureMode, capturePhoto]);
+    return () => {
+      if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!capturedImage) return;
@@ -247,26 +287,109 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             กดถ่ายเอง
           </label>
         </fieldset>
+
+        {/* Exposure slider — iPhone-style, smoothly animates in/out */}
+        <div
+          className={`mb-2 w-full overflow-hidden transition-all duration-300 ease-out ${
+            showExposure && exposureRange
+              ? "max-h-12 opacity-100"
+              : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="flex items-center gap-3 rounded-full bg-black/50 px-4 py-2 backdrop-blur-md">
+            {/* dim sun icon — min */}
+            <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-white/40" aria-hidden="true">
+              <circle cx="8" cy="8" r="3" fill="currentColor" />
+              <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5">
+                <line x1="8" y1="1" x2="8" y2="3" /><line x1="8" y1="13" x2="8" y2="15" />
+                <line x1="1" y1="8" x2="3" y2="8" /><line x1="13" y1="8" x2="15" y2="8" />
+              </g>
+            </svg>
+
+            <input
+              type="range"
+              min={exposureRange?.min ?? -3}
+              max={exposureRange?.max ?? 3}
+              step={exposureRange?.step ?? 0.1}
+              value={exposureValue}
+              onChange={(e) => {
+                setExposureValue(Number(e.target.value));
+                if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
+                exposureDismissRef.current = setTimeout(() => setShowExposure(false), 4000);
+              }}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-amber-400
+                [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-amber-400/40
+                [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-amber-400"
+              aria-label={`ปรับแสง ${exposureValue > 0 ? "+" : ""}${exposureValue}`}
+            />
+
+            {/* bright sun icon — max */}
+            <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-amber-400" aria-hidden="true">
+              <circle cx="8" cy="8" r="3" fill="currentColor" />
+              <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="8" y1="0.5" x2="8" y2="2.5" /><line x1="8" y1="13.5" x2="8" y2="15.5" />
+                <line x1="0.5" y1="8" x2="2.5" y2="8" /><line x1="13.5" y1="8" x2="15.5" y2="8" />
+                <line x1="2.7" y1="2.7" x2="4.1" y2="4.1" /><line x1="11.9" y1="11.9" x2="13.3" y2="13.3" />
+                <line x1="2.7" y1="13.3" x2="4.1" y2="11.9" /><line x1="11.9" y1="4.1" x2="13.3" y2="2.7" />
+              </g>
+            </svg>
+          </div>
+        </div>
+
         <div className="mb-3 flex w-full items-center justify-between gap-3">
           <p className="text-xs leading-5 text-white/70">
             ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
           </p>
-          {torchAvailable && cameraState === "ready" ? (
-            <button
-              type="button"
-              onClick={() => void toggleTorch()}
-              aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
-              className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                isTorchOn
-                  ? "bg-amber-400/90 text-slate-950"
-                  : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-              }`}
-            >
-              <span className="size-[18px]">
-                {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
-              </span>
-            </button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {exposureRange && cameraState === "ready" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !showExposure;
+                  setShowExposure(next);
+                  if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
+                  if (next) {
+                    exposureDismissRef.current = setTimeout(() => setShowExposure(false), 4000);
+                  }
+                }}
+                aria-label="ปรับแสง"
+                aria-pressed={showExposure}
+                className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                  showExposure
+                    ? "bg-amber-400/20 text-amber-400"
+                    : exposureValue !== 0
+                      ? "bg-white/10 text-amber-400/80 hover:bg-white/20 hover:text-amber-400"
+                      : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
+                }`}
+              >
+                <svg viewBox="0 0 16 16" className="size-[18px]" aria-hidden="true">
+                  <circle cx="8" cy="8" r="3.5" fill="currentColor" />
+                  <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.9">
+                    <line x1="8" y1="1" x2="8" y2="3.5" /><line x1="8" y1="12.5" x2="8" y2="15" />
+                    <line x1="1" y1="8" x2="3.5" y2="8" /><line x1="12.5" y1="8" x2="15" y2="8" />
+                    <line x1="3.05" y1="3.05" x2="4.82" y2="4.82" /><line x1="11.18" y1="11.18" x2="12.95" y2="12.95" />
+                    <line x1="3.05" y1="12.95" x2="4.82" y2="11.18" /><line x1="11.18" y1="4.82" x2="12.95" y2="3.05" />
+                  </g>
+                </svg>
+              </button>
+            ) : null}
+            {torchAvailable && cameraState === "ready" ? (
+              <button
+                type="button"
+                onClick={() => void toggleTorch()}
+                aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
+                className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                  isTorchOn
+                    ? "bg-amber-400/90 text-slate-950"
+                    : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
+                }`}
+              >
+                <span className="size-[18px]">
+                  {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
+                </span>
+              </button>
+            ) : null}
+          </div>
         </div>
         {captureMode === "manual" ? (
           <button
@@ -284,10 +407,14 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           </button>
         ) : (
           <div
-            className="grid size-16 shrink-0 place-items-center rounded-full border border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white shadow-lg backdrop-blur-md"
+            className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${
+              countdownValue !== null
+                ? "border-emerald-400/60 bg-emerald-400/10 text-2xl font-bold text-emerald-400"
+                : "border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white"
+            }`}
             aria-hidden="true"
           >
-            AUTO
+            {countdownValue !== null ? countdownValue : "AUTO"}
           </div>
         )}
       </div>
