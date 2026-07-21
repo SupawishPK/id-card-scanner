@@ -184,24 +184,6 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         </p>
       </header>
 
-      {torchAvailable && cameraState === "ready" ? (
-        <button
-          type="button"
-          onClick={() => void toggleTorch()}
-          aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
-          aria-pressed={isTorchOn}
-          className={`absolute right-4 top-[max(1.25rem,env(safe-area-inset-top))] z-10 grid size-10 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-            isTorchOn
-              ? "bg-amber-400/90 text-slate-950"
-              : "bg-black/55 text-white/80 hover:text-white"
-          }`}
-        >
-          <span className="size-5">
-            {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
-          </span>
-        </button>
-      ) : null}
-
       <div className="absolute inset-0 flex items-center justify-center px-5">
         <div
           className="relative shrink-0 rounded-xl"
@@ -265,9 +247,27 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             กดถ่ายเอง
           </label>
         </fieldset>
-        <p className="mb-3 text-center text-xs leading-5 text-white/70">
-          ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
-        </p>
+        <div className="mb-3 flex w-full items-center justify-between gap-3">
+          <p className="text-xs leading-5 text-white/70">
+            ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
+          </p>
+          {torchAvailable && cameraState === "ready" ? (
+            <button
+              type="button"
+              onClick={() => void toggleTorch()}
+              aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
+              className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                isTorchOn
+                  ? "bg-amber-400/90 text-slate-950"
+                  : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
+              }`}
+            >
+              <span className="size-[18px]">
+                {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
+              </span>
+            </button>
+          ) : null}
+        </div>
         {captureMode === "manual" ? (
           <button
             type="button"
