@@ -10,6 +10,7 @@ import { ID_CARD_ASPECT_RATIO } from "@/lib/id-card-scanner-config";
 
 type IdCardScannerProps = {
   className?: string;
+  onBack?: () => void;
 };
 
 const CAMERA_ICON = (
@@ -104,7 +105,7 @@ const safeVibrate = (pattern: number | number[]) => {
   }
 };
 
-export function IdCardScanner({ className = "" }: IdCardScannerProps) {
+export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
@@ -221,6 +222,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         <div className="relative flex items-center justify-center py-2">
           <button
             type="button"
+            onClick={onBack}
             aria-label="ย้อนกลับ"
             className="absolute left-0 grid size-9 place-items-center rounded-full text-white/90 hover:bg-white/10"
           >

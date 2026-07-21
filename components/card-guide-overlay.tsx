@@ -39,10 +39,11 @@ function getCompiledOuterPath(): Path2D | null {
 }
 
 const FRAME_COLOR: Record<DetectionState, string> = {
-  searching: "rgba(255, 255, 255, 1)",
-  "card-detected": "rgba(244, 63, 94, 1)",
-  "hold-still": "rgba(244, 63, 94, 1)",
-  stable: "rgba(52, 211, 153, 1)",
+  searching: "rgba(255, 255, 255, 0.85)",
+  "card-detected": "rgba(244, 63, 94, 0.9)",
+  "hold-still": "rgba(244, 63, 94, 0.9)",
+  // Base frame when stable is semi-transparent green so active laser beam pops out sharply!
+  stable: "rgba(52, 211, 153, 0.35)",
 };
 
 type CardGuideOverlayProps = {
@@ -82,18 +83,26 @@ export function CardGuideOverlay({ canvasRef, detectionState, autoProgress = 0 }
         context.fill(path);
       }
 
-      // Render smooth glowing progress stroke running around the frame when autoProgress > 0
+      // Render high-contrast dual-pass Laser Beam stroke (Electric Mint-Cyan Glow + Crisp White Core)
       if (autoProgress > 0) {
         const outerPath = getCompiledOuterPath();
         if (outerPath) {
           const totalPerimeter = 1012;
           const progressLength = Math.min(1, Math.max(0, autoProgress)) * totalPerimeter;
 
-          context.strokeStyle = "rgba(52, 211, 153, 1)";
-          context.lineWidth = 4;
+          // Pass 1: Neon Electric Mint-Cyan Glow Aura
+          context.strokeStyle = "rgba(0, 245, 212, 0.95)";
+          context.lineWidth = 6;
           context.lineCap = "round";
-          context.shadowColor = "rgba(52, 211, 153, 0.95)";
-          context.shadowBlur = 12;
+          context.shadowColor = "rgba(0, 245, 212, 1)";
+          context.shadowBlur = 18;
+          context.setLineDash([progressLength, totalPerimeter]);
+          context.stroke(outerPath);
+
+          // Pass 2: Crisp Bright White Core Line
+          context.strokeStyle = "#ffffff";
+          context.lineWidth = 2.5;
+          context.shadowBlur = 0;
           context.setLineDash([progressLength, totalPerimeter]);
           context.stroke(outerPath);
         }
