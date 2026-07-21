@@ -52,13 +52,16 @@ const STATUS_UI: Record<
   },
 };
 
+const AUTO_CAPTURE_DELAY_MS = 700;
 const MOCK_VALIDATION_DELAY_MS = 1800;
 const MOCK_VALIDATION_PASS_RATE = 0.5;
+type CaptureMode = "auto" | "manual";
 type ValidationState = "idle" | "checking" | "success" | "error";
 
 export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
   const [validationState, setValidationState] = useState<ValidationState>("idle");
   const {
     cameraState,
@@ -72,7 +75,21 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
-  const statusUi = STATUS_UI[detectionState];
+  const statusUi =
+    captureMode === "auto" && detectionState === "stable"
+      ? { ...STATUS_UI.stable, text: "ตำแหน่งดีแล้ว กำลังถ่ายอัตโนมัติ…" }
+      : STATUS_UI[detectionState];
+
+  useEffect(() => {
+    if (captureMode !== "auto" || !canCapture) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setValidationState("checking");
+      capturePhoto();
+    }, AUTO_CAPTURE_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [canCapture, captureMode, capturePhoto]);
 
   useEffect(() => {
     if (!capturedImage) return;
@@ -88,7 +105,6 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
   const handleCapture = () => {
     setValidationState("checking");
-    // 
     capturePhoto();
   };
 
@@ -116,7 +132,11 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
       <header className="absolute inset-x-0 top-0 z-10 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-center text-white">
         <h1 className="text-lg font-semibold">ถ่ายภาพบัตรประชาชน</h1>
-        <p className="mt-1 text-sm text-white/75">จัดบัตรให้อยู่ในกรอบ แล้วกดถ่ายเมื่อกรอบเป็นสีเขียว</p>
+        <p className="mt-1 text-sm text-white/75">
+          {captureMode === "auto"
+            ? "ระบบจะถ่ายอัตโนมัติเมื่อบัตรอยู่ในตำแหน่งที่เหมาะสม"
+            : "จัดบัตรให้อยู่ในกรอบ แล้วกดถ่ายเมื่อกรอบเป็นสีเขียว"}
+        </p>
       </header>
 
       <div className="absolute inset-0 flex items-center justify-center px-5">
@@ -142,21 +162,61 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
       </div>
 
       <div className="absolute inset-x-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 flex flex-col items-center">
+        <div
+          className="mb-3 grid grid-cols-2 rounded-full bg-black/60 p-1 text-sm font-medium text-white shadow-lg backdrop-blur-md"
+          role="group"
+          aria-label="เลือกโหมดถ่ายภาพ"
+        >
+          <button
+            type="button"
+            onClick={() => setCaptureMode("auto")}
+            aria-pressed={captureMode === "auto"}
+            className={`min-h-10 rounded-full px-4 transition-colors focus-visible:outline-2 focus-visible:outline-white ${
+              captureMode === "auto"
+                ? "bg-white text-slate-950"
+                : "text-white/70 hover:text-white"
+            }`}
+          >
+            อัตโนมัติ
+          </button>
+          <button
+            type="button"
+            onClick={() => setCaptureMode("manual")}
+            aria-pressed={captureMode === "manual"}
+            className={`min-h-10 rounded-full px-4 transition-colors focus-visible:outline-2 focus-visible:outline-white ${
+              captureMode === "manual"
+                ? "bg-white text-slate-950"
+                : "text-white/70 hover:text-white"
+            }`}
+          >
+            กดถ่ายเอง
+          </button>
+        </div>
         <p className="mb-3 text-center text-xs leading-5 text-white/70">
           ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
         </p>
-        <button
-          type="button"
-          onClick={handleCapture}
-          disabled={!canCapture}
-          aria-label={canCapture ? "ถ่ายรูปบัตรประชาชน" : "ยังไม่พร้อมถ่าย กรุณาจัดบัตรให้นิ่ง"}
-          className={`size-16 shrink-0 rounded-full transition-[box-shadow,opacity,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${canCapture
-              ? "shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95"
-              : "cursor-not-allowed opacity-45"
+        {captureMode === "manual" ? (
+          <button
+            type="button"
+            onClick={handleCapture}
+            disabled={!canCapture}
+            aria-label={canCapture ? "ถ่ายรูปบัตรประชาชน" : "ยังไม่พร้อมถ่าย กรุณาจัดบัตรให้นิ่ง"}
+            className={`size-16 shrink-0 rounded-full transition-[box-shadow,opacity,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${
+              canCapture
+                ? "shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95"
+                : "cursor-not-allowed opacity-45"
             }`}
-        >
-          {CAMERA_ICON}
-        </button>
+          >
+            {CAMERA_ICON}
+          </button>
+        ) : (
+          <div
+            className="grid size-16 shrink-0 place-items-center rounded-full border border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white shadow-lg backdrop-blur-md"
+            aria-hidden="true"
+          >
+            AUTO
+          </div>
+        )}
       </div>
 
       {cameraState !== "ready" ? (
