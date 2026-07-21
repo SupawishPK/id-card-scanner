@@ -103,53 +103,6 @@ export async function setTorch(
   }
 }
 
-/** Describes the supported exposure compensation range for a camera track. */
-export interface ExposureRange {
-  min: number;
-  max: number;
-  step: number;
-  current: number;
-}
-
-/** Reads the exposure compensation range from the current video track. */
-export function getExposureRange(stream: MediaStream): ExposureRange | null {
-  const track = stream.getVideoTracks()[0];
-  if (!track) return null;
-  try {
-    const capabilities = track.getCapabilities?.();
-    const settings = track.getSettings?.();
-    if (!capabilities || !settings) return null;
-    const exposureComp = Reflect.get(capabilities, "exposureCompensation") as
-      | { min: number; max: number; step: number }
-      | undefined;
-    if (!exposureComp) return null;
-    return {
-      min: exposureComp.min,
-      max: exposureComp.max,
-      step: exposureComp.step,
-      current: (Reflect.get(settings, "exposureCompensation") as number) ?? 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** Sets the exposure compensation value. Returns the value that was applied. */
-export async function setExposureCompensation(
-  stream: MediaStream,
-  value: number,
-): Promise<number> {
-  const track = stream.getVideoTracks()[0];
-  if (!track) return value;
-  try {
-    // @ts-expect-error — exposureCompensation constraint
-    await track.applyConstraints({ advanced: [{ exposureCompensation: value }] });
-    return value;
-  } catch {
-    return value;
-  }
-}
-
 // -----------------------------------------------------------------------------
 // 2. Geometry & ROI Helper Functions
 // -----------------------------------------------------------------------------

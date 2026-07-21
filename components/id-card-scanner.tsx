@@ -111,9 +111,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
-  const [showExposure, setShowExposure] = useState(false);
   const [validationState, setValidationState] = useState<ValidationState>("idle");
-  const exposureDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     cameraState,
     cameraError,
@@ -121,9 +119,6 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
     capturedImage,
     torchAvailable,
     isTorchOn,
-    exposureRange,
-    exposureValue,
-    setExposureValue,
     capturePhoto,
     toggleTorch,
     retryCapture,
@@ -169,12 +164,6 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
       setCountdownValue(null);
     };
   }, [canCapture, captureMode, capturePhoto]);
-
-  useEffect(() => {
-    return () => {
-      if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     if (!capturedImage) return;
@@ -288,116 +277,26 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           </label>
         </fieldset>
 
-        <div className="relative mb-3 flex w-full items-center justify-between gap-3">
+        <div className="mb-3 flex w-full items-center justify-between gap-3">
           <p className="text-xs leading-5 text-white/70">
             ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
           </p>
-          <div className="relative flex shrink-0 items-center gap-2">
-            {/* Exposure: floating vertical slider panel that grows out of the button */}
-            {exposureRange && cameraState === "ready" ? (
-              <div className="relative">
-                {/* Vertical slider panel — absolute positioned above button */}
-                <div
-                  className={`absolute bottom-full right-0 mb-2 overflow-hidden rounded-2xl bg-black/70 shadow-2xl backdrop-blur-xl transition-all duration-300 ease-out ${
-                    showExposure
-                      ? "scale-y-100 opacity-100"
-                      : "scale-y-0 opacity-0 pointer-events-none"
-                  }`}
-                  style={{ transformOrigin: "bottom center" }}
-                >
-                  <div className="flex flex-col items-center gap-2 px-2.5 py-3">
-                    {/* bright sun — max */}
-                    <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-amber-400" aria-hidden="true">
-                      <circle cx="8" cy="8" r="3" fill="currentColor" />
-                      <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                        <line x1="8" y1="0.5" x2="8" y2="2.5" /><line x1="8" y1="13.5" x2="8" y2="15.5" />
-                        <line x1="0.5" y1="8" x2="2.5" y2="8" /><line x1="13.5" y1="8" x2="15.5" y2="8" />
-                        <line x1="2.7" y1="2.7" x2="4.1" y2="4.1" /><line x1="11.9" y1="11.9" x2="13.3" y2="13.3" />
-                        <line x1="2.7" y1="13.3" x2="4.1" y2="11.9" /><line x1="11.9" y1="4.1" x2="13.3" y2="2.7" />
-                      </g>
-                    </svg>
-
-                    <input
-                      type="range"
-                      min={exposureRange?.min ?? -3}
-                      max={exposureRange?.max ?? 3}
-                      step={exposureRange?.step ?? 0.1}
-                      value={exposureValue}
-                      onChange={(e) => {
-                        setExposureValue(Number(e.target.value));
-                        if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
-                        exposureDismissRef.current = setTimeout(() => setShowExposure(false), 4000);
-                      }}
-                      className="h-28 w-4 cursor-pointer appearance-[slider-vertical]
-                        [writing-mode:vertical-lr] [direction:rtl]
-                        accent-amber-400
-                        [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-amber-400/40 [&::-webkit-slider-thumb]:border-0
-                        [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-amber-400"
-                      aria-label={`ปรับแสง ${exposureValue > 0 ? "+" : ""}${exposureValue}`}
-                    />
-
-                    {/* dim sun — min */}
-                    <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-white/30" aria-hidden="true">
-                      <circle cx="8" cy="8" r="3" fill="currentColor" />
-                      <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.4">
-                        <line x1="8" y1="1" x2="8" y2="3" /><line x1="8" y1="13" x2="8" y2="15" />
-                        <line x1="1" y1="8" x2="3" y2="8" /><line x1="13" y1="8" x2="15" y2="8" />
-                      </g>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Exposure toggle button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !showExposure;
-                    setShowExposure(next);
-                    if (exposureDismissRef.current) clearTimeout(exposureDismissRef.current);
-                    if (next) {
-                      exposureDismissRef.current = setTimeout(() => setShowExposure(false), 4000);
-                    }
-                  }}
-                  aria-label="ปรับแสง"
-                  aria-pressed={showExposure}
-                  className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                    showExposure
-                      ? "bg-amber-400/20 text-amber-400 scale-110"
-                      : exposureValue !== 0
-                        ? "bg-white/10 text-amber-400/80 hover:bg-white/20 hover:text-amber-400"
-                        : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-                  }`}
-                >
-                  <svg viewBox="0 0 16 16" className="size-[18px]" aria-hidden="true">
-                    <circle cx="8" cy="8" r="3.5" fill="currentColor" />
-                    <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.9">
-                      <line x1="8" y1="1" x2="8" y2="3.5" /><line x1="8" y1="12.5" x2="8" y2="15" />
-                      <line x1="1" y1="8" x2="3.5" y2="8" /><line x1="12.5" y1="8" x2="15" y2="8" />
-                      <line x1="3.05" y1="3.05" x2="4.82" y2="4.82" /><line x1="11.18" y1="11.18" x2="12.95" y2="12.95" />
-                      <line x1="3.05" y1="12.95" x2="4.82" y2="11.18" /><line x1="11.18" y1="4.82" x2="12.95" y2="3.05" />
-                    </g>
-                  </svg>
-                </button>
-              </div>
-            ) : null}
-
-            {torchAvailable && cameraState === "ready" ? (
-              <button
-                type="button"
-                onClick={() => void toggleTorch()}
-                aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
-                className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                  isTorchOn
-                    ? "bg-amber-400/90 text-slate-950"
-                    : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-                }`}
-              >
-                <span className="size-[18px]">
-                  {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
-                </span>
-              </button>
-            ) : null}
-          </div>
+          {torchAvailable && cameraState === "ready" ? (
+            <button
+              type="button"
+              onClick={() => void toggleTorch()}
+              aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
+              className={`grid size-9 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                isTorchOn
+                  ? "bg-amber-400/90 text-slate-950"
+                  : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
+              }`}
+            >
+              <span className="size-[18px]">
+                {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
+              </span>
+            </button>
+          ) : null}
         </div>
         {captureMode === "manual" ? (
           <button

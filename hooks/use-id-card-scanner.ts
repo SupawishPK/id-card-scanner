@@ -15,18 +15,15 @@ import {
 import {
   type CameraState,
   type DetectionState,
-  type ExposureRange,
   type SourceRect,
   cameraErrorMessage,
   captureRoiImage,
   createReadinessState,
-  getExposureRange,
   getSourceRect,
   isTorchSupported,
   processScannerFrame,
   requestCamera,
   resetReadiness,
-  setExposureCompensation,
   setTorch,
 } from "@/lib/id-card-scanner-engine";
 
@@ -75,9 +72,6 @@ export function useIdCardScanner({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
-  const [exposureRange, setExposureRange] = useState<ExposureRange | null>(null);
-  const [exposureValue, setExposureValueState] = useState(0);
-  const exposurePendingRef = useRef(false);
 
   // 3. Control & Loop Flags
   const streamRef = useRef<MediaStream | null>(null);
@@ -138,8 +132,6 @@ export function useIdCardScanner({
 
     setTorchAvailable(false);
     setIsTorchOn(false);
-    setExposureRange(null);
-    setExposureValueState(0);
     capturedRef.current = false;
     resetFrameState();
   }, [resetFrameState, videoRef]);
@@ -163,15 +155,6 @@ export function useIdCardScanner({
     const actual = await setTorch(stream, next);
     setIsTorchOn(actual);
   }, [isTorchOn]);
-
-  const setExposureValue = useCallback(async (value: number) => {
-    const stream = streamRef.current;
-    if (!stream || exposurePendingRef.current) return;
-    exposurePendingRef.current = true;
-    const actual = await setExposureCompensation(stream, value);
-    setExposureValueState(actual);
-    exposurePendingRef.current = false;
-  }, []);
 
   // 6. Frame Sampling & Analysis Loop
   const processSample = useCallback(
@@ -277,9 +260,6 @@ export function useIdCardScanner({
       setCameraState("ready");
       setTorchAvailable(isTorchSupported(stream));
       setIsTorchOn(false);
-      const range = getExposureRange(stream);
-      setExposureRange(range);
-      setExposureValueState(range?.current ?? 0);
       startDetectionLoop();
     } catch (error) {
       if (requestId !== cameraRequestIdRef.current) return;
@@ -337,9 +317,6 @@ export function useIdCardScanner({
     capturedImage,
     torchAvailable,
     isTorchOn,
-    exposureRange,
-    exposureValue,
-    setExposureValue,
     capturePhoto: capture,
     toggleTorch,
     retryCapture,
