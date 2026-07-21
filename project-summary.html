@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ID Card Scanner — Project Summary</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; }
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --surface: #0f172a;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #34d399;
+      --rose: #fb7185;
+      --amber: #fbbf24;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.3rem; margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; color: var(--accent); }
+    .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+    .diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--text-muted);
+    }
+    .diagram b { color: var(--accent); font-weight: 700; }
+    .diagram em { color: var(--rose); font-style: normal; }
+    .diagram i { color: var(--amber); font-style: normal; }
+    ul { padding-left: 1.5rem; margin: 0.6rem 0; }
+    li { margin: 0.3rem 0; }
+    code {
+      background: var(--surface);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.9em;
+      border: 1px solid var(--border);
+    }
+    .file-tree {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin: 1rem 0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 2;
+    }
+    .file-tree .dir { color: var(--accent); }
+    .file-tree .file { color: var(--text-muted); }
+    .tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 0.1em 0.55em;
+      border-radius: 99px;
+      font-weight: 600;
+      margin-left: 0.4em;
+    }
+    .tag-engine { background: #34d39920; color: var(--accent); }
+    .tag-hook { background: #fbbf2420; color: var(--amber); }
+    .tag-ui { background: #fb718520; color: var(--rose); }
+    .tag-config { background: #38bdf820; color: #38bdf8; }
+  </style>
+</head>
+<body>
+
+<h1>🪪 Production ID Card Scanner</h1>
+<p class="subtitle">In-browser ID card detection &amp; capture — no AI model, no server, no library. Pure Canvas API + pixel heuristics.</p>
+
+<h2>🏗️ Architecture</h2>
+
+<div class="file-tree">
+<span class="dir">app/</span>
+├── <span class="file">page.tsx</span>              <span class="tag tag-ui">UI</span> — entry point, renders IdCardScanner
+├── <span class="file">layout.tsx</span>             root layout (Thai lang, Tailwind globals)
+└── <span class="file">globals.css</span>            reduced-motion, dark theme
+
+<span class="dir">components/</span>
+├── <span class="file">id-card-scanner.tsx</span>    <span class="tag tag-ui">UI</span> — main scanner component (auto/manual capture, torch, dialogs)
+└── <span class="file">card-guide-overlay.tsx</span> <span class="tag tag-ui">UI</span> — canvas-based guide frame with Path2D icons
+
+<span class="dir">hooks/</span>
+└── <span class="file">use-id-card-scanner.ts</span> <span class="tag tag-hook">Hook</span> — camera lifecycle, rAF loop, state machine, torch
+
+<span class="dir">lib/</span>
+├── <span class="file">id-card-scanner-engine.ts</span> <span class="tag tag-engine">Engine</span> — pure analysis: geometry, luma, edge detection, readiness
+└── <span class="file">id-card-scanner-config.ts</span> <span class="tag tag-config">Config</span> — thresholds, timing, aspect ratio, detection rules
+</div>
+
+<h2>📐 Data Flow</h2>
+
+<div class="diagram">┌─────────────────────────────────────────────────────────┐
+│  <b>1. Camera</b>                                            │
+│  requestCamera() → MediaStream → &lt;video&gt; plays        │
+│  Fallback: exact: "environment" → ideal: "environment" │
+│  Torch: isTorchSupported() / setTorch()                │
+└──────────────────────┬──────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  <b>2. Frame Loop</b> (rAF @ ~15 FPS)                       │
+│  getSourceRect() — maps CSS ROI → native video coords  │
+│  expandSourceRect() — adds padding for edge detection  │
+│  drawImage() → offscreen 381×240 canvas                │
+│  analyzeFramePixels() → luma, variance, motion, edges  │
+└──────────────────────┬──────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  <b>3. Card Detection</b> (two-stage)                       │
+│                                                         │
+│  <em>Stage A — detectCardPresence()</em>                       │
+│  Coarse edge scan → refinement scan → geometry analysis│
+│  Weighted confidence: edges·0.42 + corners·0.23 +      │
+│  aspect·0.18 + contrast·0.1 + coverage·0.07            │
+│                                                         │
+│  <em>Stage B — detectCaptureAlignment()</em>                   │
+│  Narrow-band edge scan near guide frame                │
+│  Checks: min edge score, corner score, aspect, coverage│
+│  Hysteresis: relaxed thresholds when previously aligned│
+└──────────────────────┬──────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  <b>4. Readiness Accumulator</b>                             │
+│  updateReadiness() — counts consecutive stable frames  │
+│  Grace misses: 2 while acquiring, 5 while ready        │
+│  States: <i>searching</i> → <i>card-detected</i> → <i>hold-still</i> → <em>stable</em> │
+└──────────────────────┬──────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  <b>5. Capture</b>                                          │
+│  captureRoiImage() → JPEG from native-res source rect  │
+│  Auto mode: 700ms delay after stable                   │
+│  Manual mode: user taps capture button                 │
+└──────────────────────┬──────────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  <b>6. Mock Validation</b> (POC — replace with real API)     │
+│  1.8s delay → random 50% pass/fail → success/error UI │
+└─────────────────────────────────────────────────────────┘
+</div>
+
+<h2>🔍 How Detection Works</h2>
+
+<h3>Edge Detection</h3>
+<p>For each edge (top / right / bottom / left), the engine scans perpendicular to the expected edge direction within a search band. It finds the strongest luma delta per scanline, then scores by <strong>support</strong> (consistency), <strong>alignment</strong> (low variance), and <strong>direction</strong> (consistent sign).</p>
+
+<h3>Corner Verification</h3>
+<p>At each of the 4 corners (intersection of detected edges), a small region is scanned both vertically and horizontally. The corner score = √(vertical_support × horizontal_support) — requiring evidence in <em>both</em> directions.</p>
+
+<h3>Interior/Background Contrast</h3>
+<p>Samples luma inside the detected card area vs. outside — a real card should have different luminance from the background. This prevents false positives from blank frames.</p>
+
+<h3>Motion Detection</h3>
+<p>Mean Absolute Difference (MAD) between consecutive frame luma buffers — low MAD = card is still. Double-buffer swap avoids allocation per frame.</p>
+
+<h3>Aspect Ratio Validation</h3>
+<p>Detected width/height ratio is compared to the standard ID-1 ratio (85.6 / 53.98 ≈ 1.586). The log-ratio error is clamped to [0,1] via configurable tolerance.</p>
+
+<h3>Hysteresis &amp; Grace Frames</h3>
+<p>Entering a state requires stricter thresholds than leaving it (prevents flicker). Grace miss frames allow brief instability before resetting the readiness counter.</p>
+
+<h2>⚙️ Configuration</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="text-align:left; border-bottom: 1px solid var(--border);">
+      <th style="padding:0.5rem;">Group</th><th style="padding:0.5rem;">Key Tunables</th><th style="padding:0.5rem;">Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>CARD_DETECTION_CONFIG</code></td><td style="padding:0.5rem;">analysisPaddingRatio, presenceConfidence, captureConfidence</td><td style="padding:0.5rem;">ROI padding, confidence hysteresis</td></tr>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>PRESENCE_RULES</code></td><td style="padding:0.5rem;">minEdgeScore, minCornerScore, minAspectScore, minSpanCoverage</td><td style="padding:0.5rem;">Minimum card presence criteria</td></tr>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>CAPTURE_RULES</code></td><td style="padding:0.5rem;">minEdgeScore, minSpanCoverage (0.9), outerTolerance</td><td style="padding:0.5rem;">Strict alignment for capture-ready</td></tr>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>RELAXED_*</code></td><td style="padding:0.5rem;">same fields, looser values</td><td style="padding:0.5rem;">Hysteresis — easier to stay than to enter</td></tr>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>DETECTION_THRESHOLDS</code></td><td style="padding:0.5rem;">sampleIntervalMs, motion thresholds</td><td style="padding:0.5rem;">Frame rate, motion sensitivity</td></tr>
+    <tr style="border-bottom: 1px solid var(--border);"><td style="padding:0.5rem;"><code>SCANNER_TIMING</code></td><td style="padding:0.5rem;">ANALYSIS_WIDTH/HEIGHT, grace frames</td><td style="padding:0.5rem;">Offscreen canvas size, readiness timing</td></tr>
+    <tr><td style="padding:0.5rem;"><code>DEFAULT_SCANNER_CONFIG</code></td><td style="padding:0.5rem;">stableFrames, minimumStableMs, jpegQuality</td><td style="padding:0.5rem;">User-facing merged config</td></tr>
+  </tbody>
+</table>
+
+<h2>🛠️ Recent Improvements (Code Review — July 2026)</h2>
+
+<h3>🔦 Flashlight / Torch Support</h3>
+<ul>
+  <li><code>isTorchSupported()</code> — checks via <code>track.getCapabilities()</code> with feature detection</li>
+  <li><code>setTorch()</code> — toggles via <code>applyConstraints({ advanced: [{ torch }] })</code></li>
+  <li>UI: floating button (top-right) with sun icon, amber highlight when on</li>
+  <li>Auto-reset on camera stop; shown only when rear camera supports it</li>
+</ul>
+
+<h3>🐛 Key Fixes</h3>
+<ul>
+  <li><strong>ResizeObserver guard:</strong> feature check prevents crash on older browsers</li>
+  <li><strong>Separated effects:</strong> ResizeObserver (mount once) vs. color redraw (on state change)</li>
+  <li><strong>capturedRef reset:</strong> now cleared in <code>stopCamera()</code> — prevents stale state</li>
+  <li><strong>Focus management:</strong> <code>autoFocus</code> on both error and success dialog retry buttons</li>
+  <li><strong>aria-describedby:</strong> added to success dialog for screen reader parity</li>
+  <li><strong>Radio group:</strong> mode toggle uses native <code>&lt;fieldset&gt;</code> + <code>&lt;input type="radio"&gt;</code></li>
+  <li><strong>Debounced resize:</strong> 200ms debounce on resize/orientationchange handlers</li>
+  <li><strong>README fix:</strong> stale reference <code>lib/card-edge-detection.ts</code> → correct path</li>
+  <li><strong>No type assertions:</strong> all <code>as</code> coercions removed; uses <code>interface FrameState</code>, <code>Reflect.get</code>, <code>@ts-expect-error</code></li>
+</ul>
+
+<h2>🚀 How to Run</h2>
+
+<div class="diagram" style="white-space:normal;">
+<code>npm install</code><br>
+<code>npm run dev</code><br><br>
+Open <code>http://localhost:3000</code> — camera access requires HTTPS in production (localhost allowed by browsers).<br><br>
+Deploy: pushes to <code>main</code> auto-build to GitHub Pages at<br>
+<code>https://supawishpk.github.io/id-card-scanner/</code>
+</div>
+
+<h2>🧠 Key Design Decisions</h2>
+<ul>
+  <li><strong>No ML:</strong> all detection is pixel heuristics — works offline, zero latency, no model download</li>
+  <li><strong>Double-buffer luma swap:</strong> zero-allocation after first frame — critical for smooth 15 FPS on mobile</li>
+  <li><strong>Offscreen canvas:</strong> analysis runs at 381×240 (not native), saving ~15× pixel processing vs 1080p</li>
+  <li><strong>Grace frames:</strong> prevents detection flicker from hand tremor without sacrificing responsiveness</li>
+  <li><strong>Stale request guard:</strong> <code>cameraRequestIdRef</code> counter prevents async race conditions on rapid camera restart</li>
+  <li><strong>All Thai UI:</strong> consistent with <code>&lt;html lang="th"&gt;</code> — designed for Thai ID card use case</li>
+</ul>
+
+<h2>⚠️ Limitations (POC Scope)</h2>
+<ul>
+  <li>Detects <strong>card-shaped objects only</strong> — does not verify it's a real ID card</li>
+  <li>Mock validation is random 50% pass/fail — replace with actual OCR/API</li>
+  <li>No Web Worker — pixel analysis runs on main thread (fine at 381×240)</li>
+  <li>Hardcoded luminance thresholds — may need tuning for extreme lighting</li>
+  <li><code>Path2D</code> used for guide overlay (silent no-op on very old browsers)</li>
+</ul>
+
+<h2>📦 Tech Stack</h2>
+<p>
+  <code>Next.js 16</code> · <code>React 19</code> · <code>TypeScript 5.9 (strict)</code> · <code>Tailwind CSS 4</code> · <code>Canvas API</code> · <code>MediaDevices API</code> · <code>requestAnimationFrame</code>
+</p>
+
+<p style="margin-top:2.5rem; padding-top:1rem; border-top:1px solid var(--border); color: var(--text-muted); font-size:0.85rem;">
+  📄 Generated from code review — 21 July 2026
+</p>
+
+</body>
+</html>

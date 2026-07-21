@@ -30,6 +30,43 @@ const CAMERA_ICON = (
   </svg>
 );
 
+const TORCH_ON_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-full"
+    aria-hidden="true"
+  >
+    <path
+      d="M12 2v1m0 18v1m10-10h-1M3 12H2m17.07-7.07l-.39.39M5.32 18.68l-.39.39m13.14-.39l.39.39M5.32 5.32l-.39-.39M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      fill="none"
+    />
+  </svg>
+);
+
+const TORCH_OFF_ICON = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-full"
+    aria-hidden="true"
+  >
+    <path
+      d="M12 2v1m0 18v1m10-10h-1M3 12H2m17.07-7.07l-.39.39M5.32 18.68l-.39.39m13.14-.39l.39.39M5.32 5.32l-.39-.39M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      fill="none"
+    />
+    <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
 const STATUS_UI: Record<
   DetectionState,
   { text: string; dotClassName: string }
@@ -52,6 +89,11 @@ const STATUS_UI: Record<
   },
 };
 
+const AUTO_STABLE_STATUS_UI = {
+  ...STATUS_UI.stable,
+  text: "ตำแหน่งดีแล้ว กำลังถ่ายอัตโนมัติ…",
+} as const;
+
 const AUTO_CAPTURE_DELAY_MS = 700;
 const MOCK_VALIDATION_DELAY_MS = 1800;
 const MOCK_VALIDATION_PASS_RATE = 0.5;
@@ -68,7 +110,10 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
     cameraError,
     detectionState,
     capturedImage,
+    torchAvailable,
+    isTorchOn,
     capturePhoto,
+    toggleTorch,
     retryCapture,
     retryCamera,
   } = useIdCardScanner({ videoRef, roiRef: guideRef });
@@ -77,7 +122,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const canCapture = isStable && !capturedImage;
   const statusUi =
     captureMode === "auto" && detectionState === "stable"
-      ? { ...STATUS_UI.stable, text: "ตำแหน่งดีแล้ว กำลังถ่ายอัตโนมัติ…" }
+      ? AUTO_STABLE_STATUS_UI
       : STATUS_UI[detectionState];
 
   useEffect(() => {
@@ -139,6 +184,24 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         </p>
       </header>
 
+      {torchAvailable && cameraState === "ready" ? (
+        <button
+          type="button"
+          onClick={() => void toggleTorch()}
+          aria-label={isTorchOn ? "ปิดไฟฉาย" : "เปิดไฟฉาย"}
+          aria-pressed={isTorchOn}
+          className={`absolute right-4 top-[max(1.25rem,env(safe-area-inset-top))] z-10 grid size-10 place-items-center rounded-full shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+            isTorchOn
+              ? "bg-amber-400/90 text-slate-950"
+              : "bg-black/55 text-white/80 hover:text-white"
+          }`}
+        >
+          <span className="size-5">
+            {isTorchOn ? TORCH_ON_ICON : TORCH_OFF_ICON}
+          </span>
+        </button>
+      ) : null}
+
       <div className="absolute inset-0 flex items-center justify-center px-5">
         <div
           className="relative shrink-0 rounded-xl"
@@ -162,36 +225,46 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
       </div>
 
       <div className="absolute inset-x-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-10 flex flex-col items-center">
-        <div
+        <fieldset
           className="mb-3 grid grid-cols-2 rounded-full bg-black/60 p-1 text-sm font-medium text-white shadow-lg backdrop-blur-md"
-          role="group"
           aria-label="เลือกโหมดถ่ายภาพ"
         >
-          <button
-            type="button"
-            onClick={() => setCaptureMode("auto")}
-            aria-pressed={captureMode === "auto"}
-            className={`min-h-10 rounded-full px-4 transition-colors focus-visible:outline-2 focus-visible:outline-white ${
+          <legend className="sr-only">เลือกโหมดถ่ายภาพ</legend>
+          <label
+            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${
               captureMode === "auto"
                 ? "bg-white text-slate-950"
                 : "text-white/70 hover:text-white"
             }`}
           >
+            <input
+              type="radio"
+              name="captureMode"
+              value="auto"
+              checked={captureMode === "auto"}
+              onChange={() => setCaptureMode("auto")}
+              className="sr-only"
+            />
             อัตโนมัติ
-          </button>
-          <button
-            type="button"
-            onClick={() => setCaptureMode("manual")}
-            aria-pressed={captureMode === "manual"}
-            className={`min-h-10 rounded-full px-4 transition-colors focus-visible:outline-2 focus-visible:outline-white ${
+          </label>
+          <label
+            className={`grid min-h-10 cursor-pointer place-items-center rounded-full px-4 transition-colors focus-within:outline-2 focus-within:outline-white ${
               captureMode === "manual"
                 ? "bg-white text-slate-950"
                 : "text-white/70 hover:text-white"
             }`}
           >
+            <input
+              type="radio"
+              name="captureMode"
+              value="manual"
+              checked={captureMode === "manual"}
+              onChange={() => setCaptureMode("manual")}
+              className="sr-only"
+            />
             กดถ่ายเอง
-          </button>
-        </div>
+          </label>
+        </fieldset>
         <p className="mb-3 text-center text-xs leading-5 text-white/70">
           ตรวจจับและประมวลผลบนอุปกรณ์ของคุณ ภาพจะไม่ถูกอัปโหลดอัตโนมัติ
         </p>
@@ -298,6 +371,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="validation-success-title"
+          aria-describedby="validation-success-description"
         >
           <div className="my-auto text-center">
             <div className="mx-auto grid size-14 place-items-center rounded-full bg-emerald-400/15 text-2xl font-semibold text-emerald-400" aria-hidden="true">
@@ -306,7 +380,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             <h2 id="validation-success-title" className="mt-4 text-xl font-semibold">
               ตรวจสอบข้อมูลสำเร็จ
             </h2>
-            <p className="mt-2 text-sm text-slate-400">
+            <p id="validation-success-description" className="mt-2 text-sm text-slate-400">
               ภาพบัตรชัดเจนและมีข้อมูลครบถ้วน
             </p>
 
@@ -325,6 +399,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           <button
             type="button"
             onClick={handleRetry}
+            autoFocus
             className="mt-6 min-h-12 w-full rounded-xl border border-white/20 bg-white/5 px-5 py-3 font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             ถ่ายใหม่

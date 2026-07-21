@@ -97,4 +97,4 @@ The workflow supplies `NEXT_PUBLIC_BASE_PATH=/id-card-scanner`, runs the type ch
 
 The current proof-of-concept validation flow randomly returns success or an incomplete-card error after capture. Replace the timer and random result in `components/id-card-scanner.tsx` with the real validation service before production rollout.
 
-Tune the motion, variance, and edge thresholds in `hooks/use-id-card-scanner.ts` and `lib/card-edge-detection.ts` after testing target devices and lighting. Pixel heuristics verify motion and visual detail; they do not authenticate a card or validate its contents.
+Tune the motion, variance, and edge thresholds in `hooks/use-id-card-scanner.ts` and `lib/id-card-scanner-config.ts` after testing target devices and lighting. Pixel heuristics verify motion and visual detail; they do not authenticate a card or validate its contents.

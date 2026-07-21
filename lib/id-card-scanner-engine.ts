@@ -72,6 +72,37 @@ export async function requestCamera(): Promise<MediaStream> {
   }
 }
 
+/** Checks whether the current video track supports torch/flashlight toggling. */
+export function isTorchSupported(stream: MediaStream): boolean {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return false;
+  try {
+    const capabilities = track.getCapabilities?.();
+    if (!capabilities) return false;
+    // torch is part of Media Capture spec but not yet in all TS DOM type declarations
+    return "torch" in capabilities && Reflect.get(capabilities, "torch") === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Toggles the torch/flashlight on the video track. Returns the new state. */
+export async function setTorch(
+  stream: MediaStream,
+  on: boolean,
+): Promise<boolean> {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return false;
+  try {
+    // `torch` is a valid constraint per Media Capture spec but missing from TS DOM types
+    // @ts-expect-error — torch constraint
+    await track.applyConstraints({ advanced: [{ torch: on }] });
+    return on;
+  } catch {
+    return !on;
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 2. Geometry & ROI Helper Functions
 // -----------------------------------------------------------------------------
@@ -208,7 +239,9 @@ export function analyzeFramePixels(
         motionSum += Math.abs(luma - previousLuma[pixelIndex]);
       }
       if (x >= step) {
-        if (Math.abs(luma - currentLuma[pixelIndex - step]) > EDGE_DELTA_THRESHOLD) {
+        if (
+          Math.abs(luma - currentLuma[pixelIndex - step]) > EDGE_DELTA_THRESHOLD
+        ) {
           edgeCount += 1;
         }
         comparisons += 1;
@@ -411,7 +444,9 @@ function scoreEdgePositions(
     positiveDirectionCount,
     positionCount - positiveDirectionCount,
   );
-  const directionScore = clamp01((consistentDirections / positionCount - 0.5) * 2);
+  const directionScore = clamp01(
+    (consistentDirections / positionCount - 0.5) * 2,
+  );
 
   return {
     score: support * (0.08 + alignment * 0.72 + directionScore * 0.2),
@@ -590,7 +625,9 @@ function measureCorner(
     horizontalScanlines += 1;
   }
 
-  const verticalScore = verticalScanlines ? verticalSupports / verticalScanlines : 0;
+  const verticalScore = verticalScanlines
+    ? verticalSupports / verticalScanlines
+    : 0;
   const horizontalScore = horizontalScanlines
     ? horizontalSupports / horizontalScanlines
     : 0;
@@ -606,8 +643,22 @@ function measureCorners(
 ): CornerScores {
   const { top, right, bottom, left } = edges;
   return {
-    topLeft: measureCorner(luma, width, height, left.position, top.position, step),
-    topRight: measureCorner(luma, width, height, right.position, top.position, step),
+    topLeft: measureCorner(
+      luma,
+      width,
+      height,
+      left.position,
+      top.position,
+      step,
+    ),
+    topRight: measureCorner(
+      luma,
+      width,
+      height,
+      right.position,
+      top.position,
+      step,
+    ),
     bottomRight: measureCorner(
       luma,
       width,
@@ -690,10 +741,10 @@ function analyzeGeometry(
     left: edges.left.score,
   };
   const cornerScores = measureCorners(luma, width, height, edges, step);
-  const detectedWidth = Math.max(0, edges.right.position - edges.left.position) *
-    width;
-  const detectedHeight = Math.max(0, edges.bottom.position - edges.top.position) *
-    height;
+  const detectedWidth =
+    Math.max(0, edges.right.position - edges.left.position) * width;
+  const detectedHeight =
+    Math.max(0, edges.bottom.position - edges.top.position) * height;
   const detectedAspect = detectedHeight ? detectedWidth / detectedHeight : 0;
   const expectedAspect = width / height;
   const aspectError = detectedAspect
@@ -720,7 +771,10 @@ function analyzeGeometry(
       detectedHeight / (height * expectedSpan),
     ),
     averageEdgeScore:
-      (edgeScores.top + edgeScores.right + edgeScores.bottom + edgeScores.left) /
+      (edgeScores.top +
+        edgeScores.right +
+        edgeScores.bottom +
+        edgeScores.left) /
       4,
     averageCornerScore:
       (cornerScores.topLeft +
@@ -764,12 +818,12 @@ function passesCoverageRules(
   );
 }
 
-function guidelineEdges() {
+const GUIDELINE_EDGES = (() => {
   const near =
     CARD_DETECTION_CONFIG.analysisPaddingRatio /
     (1 + CARD_DETECTION_CONFIG.analysisPaddingRatio * 2);
   return { near, far: 1 - near, span: 1 - near * 2 };
-}
+})();
 
 export function detectCardPresence(
   luma: Uint8Array,
@@ -777,7 +831,7 @@ export function detectCardPresence(
   height: number,
   step = 2,
 ): CardPresenceMetrics {
-  const guide = guidelineEdges();
+  const guide = GUIDELINE_EDGES;
   const searchOuterEdge = Math.max(0.02, guide.near - 0.025);
   const coarseEdges: CardEdges = {
     left: measureVerticalEdge(luma, width, height, searchOuterEdge, 0.46, step),
@@ -789,7 +843,14 @@ export function detectCardPresence(
       1 - searchOuterEdge,
       step,
     ),
-    top: measureHorizontalEdge(luma, width, height, searchOuterEdge, 0.46, step),
+    top: measureHorizontalEdge(
+      luma,
+      width,
+      height,
+      searchOuterEdge,
+      0.46,
+      step,
+    ),
     bottom: measureHorizontalEdge(
       luma,
       width,
@@ -844,7 +905,15 @@ export function detectCardPresence(
       coarseEdges.right.position - spanInset,
     ),
   };
-  const metrics = analyzeGeometry(luma, width, height, edges, guide.span, 0.18, step);
+  const metrics = analyzeGeometry(
+    luma,
+    width,
+    height,
+    edges,
+    guide.span,
+    0.18,
+    step,
+  );
   const coverageConfidence = clamp01(
     (metrics.spanCoverage - PRESENCE_RULES.minSpanCoverage) / 0.35,
   );
@@ -887,7 +956,7 @@ export function detectCaptureAlignment(
   height: number,
   step = 2,
 ): CaptureAlignmentMetrics {
-  const guide = guidelineEdges();
+  const guide = GUIDELINE_EDGES;
   const innerSearchAllowance = guide.span * 0.12;
   const nearStart = Math.max(0, guide.near - CAPTURE_RULES.outerTolerance);
   const nearEnd = guide.near + innerSearchAllowance;
@@ -899,7 +968,15 @@ export function detectCaptureAlignment(
     bottom: measureHorizontalEdge(luma, width, height, farStart, farEnd, step),
     left: measureVerticalEdge(luma, width, height, nearStart, nearEnd, step),
   };
-  const metrics = analyzeGeometry(luma, width, height, edges, guide.span, 0.14, step);
+  const metrics = analyzeGeometry(
+    luma,
+    width,
+    height,
+    edges,
+    guide.span,
+    0.14,
+    step,
+  );
   const captureConfidence = clamp01(
     metrics.averageEdgeScore * 0.42 +
       metrics.averageCornerScore * 0.18 +
@@ -917,12 +994,7 @@ export function detectCaptureAlignment(
     captureConfidence,
     meetsMinimumGeometry:
       passesCoverageRules(metrics, CAPTURE_RULES) &&
-      isInsideGuide(
-        edges,
-        guide.near,
-        guide.far,
-        CAPTURE_RULES.outerTolerance,
-      ),
+      isInsideGuide(edges, guide.near, guide.far, CAPTURE_RULES.outerTolerance),
     meetsRelaxedGeometry:
       passesCoverageRules(metrics, RELAXED_CAPTURE_RULES) &&
       isInsideGuide(
@@ -966,6 +1038,7 @@ export type FrameProcessingParams = {
   hasDetectedCard: boolean;
   isCaptureAligned: boolean;
   thresholds?: Partial<ScannerDetectionThresholds>;
+  sourceRect?: SourceRect | null;
 };
 
 export type FrameProcessingResult = {
@@ -991,12 +1064,13 @@ export function processScannerFrame({
   hasDetectedCard: prevHasDetectedCard,
   isCaptureAligned: prevIsCaptureAligned,
   thresholds: customThresholds,
+  sourceRect: inputSourceRect,
 }: FrameProcessingParams): FrameProcessingResult | null {
   if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
 
   const thresholds = { ...DEFAULT_DETECTION_THRESHOLDS, ...customThresholds };
 
-  const sourceRect = getSourceRect(video, roi);
+  const sourceRect = inputSourceRect ?? getSourceRect(video, roi);
   if (!sourceRect) return null;
 
   const analysisSourceRect = expandSourceRect(
@@ -1033,7 +1107,8 @@ export function processScannerFrame({
     SCANNER_TIMING.ANALYSIS_HEIGHT,
   ).data;
 
-  const pixelCount = SCANNER_TIMING.ANALYSIS_WIDTH * SCANNER_TIMING.ANALYSIS_HEIGHT;
+  const pixelCount =
+    SCANNER_TIMING.ANALYSIS_WIDTH * SCANNER_TIMING.ANALYSIS_HEIGHT;
   let currentLuma = inputCurrentLuma;
   if (!currentLuma || currentLuma.length !== pixelCount) {
     currentLuma = new Uint8Array(pixelCount);
@@ -1053,7 +1128,8 @@ export function processScannerFrame({
   const nextCurrentLuma = previousLuma ?? new Uint8Array(pixelCount);
 
   const hasUsableLight = mean > 42 && mean < 225;
-  const hasCardDetails = hasUsableLight && variance > 260 && edgeDensity > 0.012;
+  const hasCardDetails =
+    hasUsableLight && variance > 260 && edgeDensity > 0.012;
   const hasPresenceDetails =
     mean > 24 && mean < 235 && variance > 120 && edgeDensity > 0.003;
 

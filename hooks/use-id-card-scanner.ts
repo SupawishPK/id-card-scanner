@@ -19,9 +19,12 @@ import {
   cameraErrorMessage,
   captureRoiImage,
   createReadinessState,
+  getSourceRect,
+  isTorchSupported,
   processScannerFrame,
   requestCamera,
   resetReadiness,
+  setTorch,
 } from "@/lib/id-card-scanner-engine";
 
 export type { DetectionState, CameraState, ScannerConfig };
@@ -50,7 +53,7 @@ export function useIdCardScanner({
   jpegQuality = DEFAULT_SCANNER_CONFIG.jpegQuality,
   config: customConfig,
 }: ScannerOptions) {
-  // Merge configurations
+  // 1. Unified Configuration
   const config = useMemo(
     () => ({
       ...DEFAULT_SCANNER_CONFIG,
@@ -62,39 +65,58 @@ export function useIdCardScanner({
     [customConfig, jpegQuality, minimumStableMs, stableFrames],
   );
 
-  // Public UI State
+  // 2. Public UI States
   const [cameraState, setCameraState] = useState<CameraState>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectionState, setDetectionState] = useState<DetectionState>("searching");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
 
-  // Configuration for readiness tracking accumulator
-  const readinessConfig = useMemo(
-    () => ({
-      stableFrames: config.stableFrames,
-      minimumStableMs: config.minimumStableMs,
-      acquireMissGraceFrames: config.acquireMissGraceFrames,
-      readyMissGraceFrames: config.readyMissGraceFrames,
-    }),
-    [config],
-  );
-
-  // Internal Scanner Refs & Buffers
+  // 3. Control & Loop Flags
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const previousLumaRef = useRef<Uint8Array | null>(null);
-  const currentLumaRef = useRef<Uint8Array | null>(null);
-  const sourceRectRef = useRef<SourceRect | null>(null);
-  const readinessRef = useRef(createReadinessState());
-  const hasDetectedCardRef = useRef(false);
-  const isCaptureAlignedRef = useRef(false);
-  const capturedRef = useRef(false);
-  const runningRef = useRef(false);
   const cameraRequestIdRef = useRef(0);
   const lastSampleAtRef = useRef(0);
+  const capturedRef = useRef(false);
+  const runningRef = useRef(false);
 
-  // Stop camera stream & reset scanner pipeline state
+  // 4. Grouped Frame Processing Buffer & State
+  interface FrameState {
+    canvas: HTMLCanvasElement | null;
+    previousLuma: Uint8Array | null;
+    currentLuma: Uint8Array | null;
+    sourceRect: SourceRect | null;
+    needsRectRecalc: boolean;
+    readiness: ReturnType<typeof createReadinessState>;
+    hasDetectedCard: boolean;
+    isCaptureAligned: boolean;
+  }
+  const frameStateRef = useRef<FrameState>({
+    canvas: null,
+    previousLuma: null,
+    currentLuma: null,
+    sourceRect: null,
+    needsRectRecalc: true,
+    readiness: createReadinessState(),
+    hasDetectedCard: false,
+    isCaptureAligned: false,
+  });
+
+  // Helper: Reset frame analysis buffers & readiness tracking
+  const resetFrameState = useCallback(() => {
+    const fs = frameStateRef.current;
+    fs.canvas = null;
+    fs.previousLuma = null;
+    fs.currentLuma = null;
+    fs.sourceRect = null;
+    fs.needsRectRecalc = true;
+    fs.hasDetectedCard = false;
+    fs.isCaptureAligned = false;
+    resetReadiness(fs.readiness);
+  }, []);
+
+  // 5. Camera & Pipeline Controls
   const stopCamera = useCallback(() => {
     cameraRequestIdRef.current += 1;
     runningRef.current = false;
@@ -108,81 +130,92 @@ export function useIdCardScanner({
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
 
-    previousLumaRef.current = null;
-    currentLumaRef.current = null;
-    sourceRectRef.current = null;
-    analysisCanvasRef.current = null;
-    resetReadiness(readinessRef.current);
-    hasDetectedCardRef.current = false;
-    isCaptureAlignedRef.current = false;
-  }, [videoRef]);
+    setTorchAvailable(false);
+    setIsTorchOn(false);
+    capturedRef.current = false;
+    resetFrameState();
+  }, [resetFrameState, videoRef]);
 
-  // Capture current ROI image when card scanner is ready
   const capture = useCallback(() => {
     const video = videoRef.current;
-    const rect = sourceRectRef.current;
-    if (!video || !rect || capturedRef.current || !readinessRef.current.isReady) return;
+    const fs = frameStateRef.current;
+    if (!video || !fs.sourceRect || capturedRef.current || !fs.readiness.isReady) return;
 
-    const dataUrl = captureRoiImage(video, rect, config.jpegQuality);
+    const dataUrl = captureRoiImage(video, fs.sourceRect, config.jpegQuality);
     if (!dataUrl) return;
 
     capturedRef.current = true;
     setCapturedImage(dataUrl);
   }, [config.jpegQuality, videoRef]);
 
-  // Process a single camera video frame
+  const toggleTorch = useCallback(async () => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const next = !isTorchOn;
+    const actual = await setTorch(stream, next);
+    setIsTorchOn(actual);
+  }, [isTorchOn]);
+
+  // 6. Frame Sampling & Analysis Loop
   const processSample = useCallback(
     (now: number) => {
       const video = videoRef.current;
       const roi = roiRef.current;
       if (!video || !roi) return;
 
+      const fs = frameStateRef.current;
+
+      // Recalculate sourceRect only when null or invalidated by resize/orientation change
+      if (!fs.sourceRect || fs.needsRectRecalc) {
+        fs.sourceRect = getSourceRect(video, roi);
+        fs.needsRectRecalc = false;
+      }
+      if (!fs.sourceRect) return;
+
       const result = processScannerFrame({
         video,
         roi,
         now,
-        canvas: analysisCanvasRef.current,
-        previousLuma: previousLumaRef.current,
-        currentLuma: currentLumaRef.current,
-        readiness: readinessRef.current,
-        readinessConfig,
-        hasDetectedCard: hasDetectedCardRef.current,
-        isCaptureAligned: isCaptureAlignedRef.current,
-        thresholds: {
-          sampleIntervalMs: config.sampleIntervalMs,
-          motionEnterThreshold: config.motionEnterThreshold,
-          motionExitThreshold: config.motionExitThreshold,
-          presenceConfidenceEnter: config.presenceConfidenceEnter,
-          presenceConfidenceExit: config.presenceConfidenceExit,
-          captureConfidenceEnter: config.captureConfidenceEnter,
-          captureConfidenceExit: config.captureConfidenceExit,
-        },
+        canvas: fs.canvas,
+        previousLuma: fs.previousLuma,
+        currentLuma: fs.currentLuma,
+        readiness: fs.readiness,
+        readinessConfig: config,
+        hasDetectedCard: fs.hasDetectedCard,
+        isCaptureAligned: fs.isCaptureAligned,
+        thresholds: config,
+        sourceRect: fs.sourceRect,
       });
 
       if (!result) return;
 
-      sourceRectRef.current = result.sourceRect;
-      analysisCanvasRef.current = result.canvas;
-      previousLumaRef.current = result.previousLuma;
-      currentLumaRef.current = result.currentLuma;
-      hasDetectedCardRef.current = result.hasDetectedCard;
-      isCaptureAlignedRef.current = result.isCaptureAligned;
+      fs.sourceRect = result.sourceRect;
+      fs.canvas = result.canvas;
+      fs.previousLuma = result.previousLuma;
+      fs.currentLuma = result.currentLuma;
+      fs.hasDetectedCard = result.hasDetectedCard;
+      fs.isCaptureAligned = result.isCaptureAligned;
 
       setDetectionState((current) =>
         current === result.detectionState ? current : result.detectionState,
       );
     },
-    [config, readinessConfig, roiRef, videoRef],
+    [config, roiRef, videoRef],
   );
 
-  // Start continuous frame sampling loop
   const startDetectionLoop = useCallback(() => {
     if (runningRef.current) return;
     runningRef.current = true;
 
     const tick = (now: number) => {
-      if (!runningRef.current) return;
-      if (!capturedRef.current && now - lastSampleAtRef.current >= config.sampleIntervalMs) {
+      // Stop rAF loop immediately if no longer running or already captured photo
+      if (!runningRef.current || capturedRef.current) {
+        runningRef.current = false;
+        animationFrameRef.current = null;
+        return;
+      }
+
+      if (now - lastSampleAtRef.current >= config.sampleIntervalMs) {
         lastSampleAtRef.current = now;
         processSample(now);
       }
@@ -192,7 +225,6 @@ export function useIdCardScanner({
     animationFrameRef.current = requestAnimationFrame(tick);
   }, [config.sampleIntervalMs, processSample]);
 
-  // Start hardware camera stream and detection loop
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState("error");
@@ -221,7 +253,13 @@ export function useIdCardScanner({
 
       video.srcObject = stream;
       await video.play();
+
+      // Guard against component unmount or camera restart while waiting for video.play()
+      if (requestId !== cameraRequestIdRef.current) return;
+
       setCameraState("ready");
+      setTorchAvailable(isTorchSupported(stream));
+      setIsTorchOn(false);
       startDetectionLoop();
     } catch (error) {
       if (requestId !== cameraRequestIdRef.current) return;
@@ -231,30 +269,56 @@ export function useIdCardScanner({
     }
   }, [startDetectionLoop, stopCamera, videoRef]);
 
-  // Reset captured image and restart frame analysis
   const retryCapture = useCallback(() => {
     capturedRef.current = false;
-    previousLumaRef.current = null;
-    currentLumaRef.current = null;
-    resetReadiness(readinessRef.current);
-    hasDetectedCardRef.current = false;
-    isCaptureAlignedRef.current = false;
+    resetFrameState();
     setCapturedImage(null);
     setDetectionState("searching");
-  }, []);
+    startDetectionLoop();
+  }, [resetFrameState, startDetectionLoop]);
 
-  // Initialize camera stream on mount and cleanup on unmount
+  // 7. Lifecycle & Window / Visibility Event Management
   useEffect(() => {
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        frameStateRef.current.needsRectRecalc = true;
+      }, 200);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && runningRef.current) {
+        const video = videoRef.current;
+        if (video && video.paused && streamRef.current?.active) {
+          void video.play().catch(() => void startCamera());
+        }
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     void startCamera();
-    return stopCamera;
-  }, [startCamera, stopCamera]);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopCamera();
+    };
+  }, [startCamera, stopCamera, videoRef]);
 
   return {
     cameraState,
     cameraError,
     detectionState,
     capturedImage,
+    torchAvailable,
+    isTorchOn,
     capturePhoto: capture,
+    toggleTorch,
     retryCapture,
     retryCamera: startCamera,
     stopCamera,
