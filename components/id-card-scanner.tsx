@@ -87,16 +87,10 @@ const STATUS_UI: Record<
 
 const AUTO_STABLE_STATUS_UI = {
   ...STATUS_UI.stable,
-  text: "ตำแหน่งดีแล้ว กำลังถ่ายอัตโนมัติ…",
+  text: "วางบัตรนิ่ง ๆ กำลังถ่ายอัตโนมัติ…",
 } as const;
 
-const COUNTDOWN_STATUS_UI = {
-  ...STATUS_UI.stable,
-  text: "ถือนิ่ง ๆ กำลังถ่ายภาพ…",
-} as const;
-
-const COUNTDOWN_START = 3;
-const COUNTDOWN_STEP_MS = 400;
+const AUTO_CAPTURE_DURATION_MS = 1800;
 const MOCK_VALIDATION_DELAY_MS = 1800;
 const MOCK_VALIDATION_PASS_RATE = 0.5;
 type CaptureMode = "auto" | "manual";
@@ -114,7 +108,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
-  const [countdownValue, setCountdownValue] = useState<number | null>(null);
+  const [autoProgress, setAutoProgress] = useState<number>(0);
   const [validationState, setValidationState] = useState<ValidationState>("idle");
   const {
     cameraState,
@@ -132,42 +126,53 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
   const statusUi =
-    countdownValue !== null
-      ? COUNTDOWN_STATUS_UI
+    autoProgress > 0
+      ? AUTO_STABLE_STATUS_UI
       : captureMode === "auto" && detectionState === "stable"
         ? AUTO_STABLE_STATUS_UI
         : STATUS_UI[detectionState];
 
-  // Auto-capture countdown: 3 → 2 → 1 → capture
+  // Smooth Auto-capture progress: 0.0 → 1.0 over 1,800ms
   useEffect(() => {
     if (captureMode !== "auto" || !canCapture) {
-      setCountdownValue(null);
+      setAutoProgress(0);
       return;
     }
 
-    let count = COUNTDOWN_START;
-    setCountdownValue(count);
-    safeVibrate(50);
+    let startTime: number | null = null;
+    let animFrameId: number;
+    let lastVibrateStep = 0;
 
-    const intervalId = window.setInterval(() => {
-      count -= 1;
-      if (count > 0) {
-        setCountdownValue(count);
-        safeVibrate(50);
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(1, elapsed / AUTO_CAPTURE_DURATION_MS);
+      setAutoProgress(progress);
+
+      // Subtle haptic feedback pulses at 25%, 50%, 75%
+      const step = Math.floor(progress * 4);
+      if (step > lastVibrateStep && step < 4) {
+        lastVibrateStep = step;
+        safeVibrate(35);
+      }
+
+      if (progress < 1) {
+        animFrameId = requestAnimationFrame(animate);
       } else {
-        setCountdownValue(null);
-        safeVibrate([80, 50, 80]);
+        setAutoProgress(0);
+        safeVibrate([60, 40, 80]);
         const success = capturePhoto();
         if (success) {
           setValidationState("checking");
         }
-        window.clearInterval(intervalId);
       }
-    }, COUNTDOWN_STEP_MS);
+    };
+
+    animFrameId = requestAnimationFrame(animate);
 
     return () => {
-      window.clearInterval(intervalId);
-      setCountdownValue(null);
+      cancelAnimationFrame(animFrameId);
+      setAutoProgress(0);
     };
   }, [canCapture, captureMode, capturePhoto]);
 
@@ -246,7 +251,11 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             aspectRatio: ID_CARD_ASPECT_RATIO,
           }}
         >
-          <CardGuideOverlay canvasRef={guideRef} detectionState={detectionState} />
+          <CardGuideOverlay
+            canvasRef={guideRef}
+            detectionState={detectionState}
+            autoProgress={autoProgress}
+          />
 
           <div
             role="status"
@@ -318,13 +327,13 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             </button>
           ) : (
             <div
-              className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${countdownValue !== null
-                ? "border-emerald-400/60 bg-emerald-400/10 text-2xl font-bold text-emerald-400"
+              className={`grid size-16 shrink-0 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 ${autoProgress > 0
+                ? "border-emerald-400/80 bg-emerald-400/20 text-xs font-bold text-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.5)]"
                 : "border-white/25 bg-black/35 text-[11px] font-semibold tracking-wider text-white"
                 }`}
               aria-hidden="true"
             >
-              {countdownValue !== null ? countdownValue : "AUTO"}
+              {autoProgress > 0 ? `${Math.round(autoProgress * 100)}%` : "AUTO"}
             </div>
           )}
 

@@ -14,7 +14,12 @@ const FRAME_PATHS = [
   "M308.219 97.0298C309.154 97.0298 309.918 97.7958 309.918 98.7319L309.918 177.123C309.918 178.06 309.154 178.826 308.219 178.826L243.298 178.826C242.363 178.826 241.599 178.06 241.599 177.123L241.599 98.7319C241.599 97.7957 242.363 97.0298 243.298 97.0298L308.219 97.0298ZM308.219 93.6255L243.298 93.6255C240.487 93.6255 238.202 95.9149 238.202 98.7319L238.202 177.123C238.202 179.94 240.487 182.23 243.298 182.23L308.219 182.23C311.03 182.23 313.315 179.94 313.315 177.123L313.315 98.7319C313.315 95.9149 311.03 93.6255 308.219 93.6255Z",
 ] as const;
 
+// Outer rounded rectangle border path for progress stroke
+const OUTER_BORDER_PATH_DATA = "M 5 3.4 H 315.9 A 1.7 1.7 0 0 1 317.6 5.1 V 194.9 A 1.7 1.7 0 0 1 315.9 196.6 H 5 A 1.7 1.7 0 0 1 3.4 194.9 V 5.1 A 1.7 1.7 0 0 1 5 3.4 Z";
+
 let cachedCompiledPaths: Path2D[] | null = null;
+let cachedOuterPath: Path2D | null = null;
+
 function getCompiledFramePaths(): Path2D[] {
   if (!cachedCompiledPaths) {
     if (typeof Path2D !== "undefined") {
@@ -24,6 +29,13 @@ function getCompiledFramePaths(): Path2D[] {
     }
   }
   return cachedCompiledPaths;
+}
+
+function getCompiledOuterPath(): Path2D | null {
+  if (!cachedOuterPath && typeof Path2D !== "undefined") {
+    cachedOuterPath = new Path2D(OUTER_BORDER_PATH_DATA);
+  }
+  return cachedOuterPath;
 }
 
 const FRAME_COLOR: Record<DetectionState, string> = {
@@ -36,9 +48,10 @@ const FRAME_COLOR: Record<DetectionState, string> = {
 type CardGuideOverlayProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   detectionState: DetectionState;
+  autoProgress?: number;
 };
 
-export function CardGuideOverlay({ canvasRef, detectionState }: CardGuideOverlayProps) {
+export function CardGuideOverlay({ canvasRef, detectionState, autoProgress = 0 }: CardGuideOverlayProps) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -68,6 +81,24 @@ export function CardGuideOverlay({ canvasRef, detectionState }: CardGuideOverlay
       for (const path of compiledPaths) {
         context.fill(path);
       }
+
+      // Render smooth glowing progress stroke running around the frame when autoProgress > 0
+      if (autoProgress > 0) {
+        const outerPath = getCompiledOuterPath();
+        if (outerPath) {
+          const totalPerimeter = 1012;
+          const progressLength = Math.min(1, Math.max(0, autoProgress)) * totalPerimeter;
+
+          context.strokeStyle = "rgba(52, 211, 153, 1)";
+          context.lineWidth = 4;
+          context.lineCap = "round";
+          context.shadowColor = "rgba(52, 211, 153, 0.95)";
+          context.shadowBlur = 12;
+          context.setLineDash([progressLength, totalPerimeter]);
+          context.stroke(outerPath);
+        }
+      }
+
       context.restore();
     };
 
@@ -78,7 +109,7 @@ export function CardGuideOverlay({ canvasRef, detectionState }: CardGuideOverlay
       resizeObserver.observe(canvas);
       return () => resizeObserver.disconnect();
     }
-  }, [canvasRef, detectionState]);
+  }, [autoProgress, canvasRef, detectionState]);
 
   return (
     <canvas
