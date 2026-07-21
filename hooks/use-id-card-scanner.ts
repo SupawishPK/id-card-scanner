@@ -21,10 +21,8 @@ import {
   updateReadiness,
 } from "@/lib/scanner-readiness";
 
-// The current guideline is the landscape ID-1 frame rotated 90°, so analysis
-// and capture follow its portrait-oriented bounding box.
 const ANALYSIS_HEIGHT = 240;
-const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT / ID_CARD_ASPECT_RATIO);
+const ANALYSIS_WIDTH = Math.round(ANALYSIS_HEIGHT * ID_CARD_ASPECT_RATIO);
 const SAMPLE_INTERVAL_MS = 1000 / 15;
 // Hand-held phones naturally produce small frame-to-frame luma changes. Use a
 // stricter threshold to enter the ready state and a wider one to leave it, then

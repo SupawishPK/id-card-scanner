@@ -12,6 +12,24 @@ type IdCardScannerProps = {
   className?: string;
 };
 
+const CAMERA_ICON = (
+  <svg
+    viewBox="0 0 64 64"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-full"
+    aria-hidden="true"
+  >
+    <circle cx="32" cy="32" r="32" fill="white" />
+    <circle cx="32" cy="32" r="29" fill="#0E1329" />
+    <circle cx="32" cy="32" r="27" fill="white" />
+    <path
+      d="M34.472 23.8333L36.607 26.1667H41.332V40.1667H22.6654V26.1667H27.3904L29.5254 23.8333H34.472ZM35.4987 21.5H28.4987L26.3637 23.8333H22.6654C21.382 23.8333 20.332 24.8833 20.332 26.1667V40.1667C20.332 41.45 21.382 42.5 22.6654 42.5H41.332C42.6154 42.5 43.6654 41.45 43.6654 40.1667V26.1667C43.6654 24.8833 42.6154 23.8333 41.332 23.8333H37.6337L35.4987 21.5ZM31.9987 29.6667C33.9237 29.6667 35.4987 31.2417 35.4987 33.1667C35.4987 35.0917 33.9237 36.6667 31.9987 36.6667C30.0737 36.6667 28.4987 35.0917 28.4987 33.1667C28.4987 31.2417 30.0737 29.6667 31.9987 29.6667ZM31.9987 27.3333C28.7787 27.3333 26.1654 29.9467 26.1654 33.1667C26.1654 36.3867 28.7787 39 31.9987 39C35.2187 39 37.832 36.3867 37.832 33.1667C37.832 29.9467 35.2187 27.3333 31.9987 27.3333Z"
+      fill="#565A69"
+    />
+  </svg>
+);
+
 const STATUS_UI: Record<
   DetectionState,
   { text: string; dotClassName: string }
@@ -70,6 +88,7 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
 
   const handleCapture = () => {
     setValidationState("checking");
+    // 
     capturePhoto();
   };
 
@@ -104,9 +123,9 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
         <div
           className="relative shrink-0 rounded-xl"
           style={{
-            // Enlarged responsively while retaining the exact ID-1 ratio.
-            // After the 90° visual rotation this becomes a portrait ROI.
-            width: "min(112vw, 68dvh, 500px)",
+            // The parent already contributes 20px horizontal padding; subtract
+            // another 16px so the guideline sits 28px from each scanner edge.
+            width: "min(calc(100% - 1rem), 68dvh)",
             aspectRatio: ID_CARD_ASPECT_RATIO,
           }}
         >
@@ -131,20 +150,12 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
           onClick={handleCapture}
           disabled={!canCapture}
           aria-label={canCapture ? "ถ่ายรูปบัตรประชาชน" : "ยังไม่พร้อมถ่าย กรุณาจัดบัตรให้นิ่ง"}
-          className={`group grid size-20 shrink-0 place-items-center rounded-full border-4 p-1.5 transition-[border-color,box-shadow,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${
-            canCapture
-              ? "border-white bg-black/25 shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95"
-              : "cursor-not-allowed border-white/30 bg-black/20"
-          }`}
-        >
-          <span
-            className={`block size-full rounded-full transition-[background-color,transform] ${
-              canCapture
-                ? "bg-white group-active:scale-90"
-                : "bg-white/25"
+          className={`size-16 shrink-0 rounded-full transition-[box-shadow,opacity,transform] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${canCapture
+              ? "shadow-[0_0_0_3px_rgba(52,211,153,0.65),0_0_24px_rgba(52,211,153,0.55)] active:scale-95"
+              : "cursor-not-allowed opacity-45"
             }`}
-            aria-hidden="true"
-          />
+        >
+          {CAMERA_ICON}
         </button>
       </div>
 
@@ -245,12 +256,8 @@ export function IdCardScanner({ className = "" }: IdCardScannerProps) {
             >
               <img
                 src={capturedImage}
-                alt="ภาพบัตรจากจังหวะที่กดถ่าย หมุนไปทางซ้าย 90 องศา"
-                className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 -rotate-90 object-cover"
-                style={{
-                  width: `${100 / ID_CARD_ASPECT_RATIO}%`,
-                  height: `${ID_CARD_ASPECT_RATIO * 100}%`,
-                }}
+                alt="ภาพบัตรจากจังหวะที่กดถ่าย"
+                className="absolute inset-0 size-full object-cover"
               />
             </div>
           </div>
