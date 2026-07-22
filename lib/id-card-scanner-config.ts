@@ -16,6 +16,10 @@ export const CORNER_RADIUS_RATIO = 0.055;
 export const EDGE_LUMA_DELTA_THRESHOLD = 10;
 /** Luma delta threshold for frame-level edge density calculation */
 export const EDGE_DELTA_THRESHOLD = 18;
+/** Maximum edge slope (radians) before an edge is considered tilted (~3.4°) */
+export const MAX_EDGE_SLOPE = 0.06;
+/** Maximum difference in slope between opposite edges (radians) before card is skewed */
+export const MAX_PARALLELISM_ERROR = 0.08;
 
 export const PRESENCE_RULES = {
   minEdgeScore: 0.10,
@@ -23,6 +27,7 @@ export const PRESENCE_RULES = {
   minAspectScore: 0.00,
   minSpanCoverage: 0.20,
   maxSpanCoverage: 1.12,
+  minSkewScore: 0.30,
 } as const;
 
 export const RELAXED_PRESENCE_RULES = {
@@ -31,6 +36,7 @@ export const RELAXED_PRESENCE_RULES = {
   minAspectScore: 0.00,
   minSpanCoverage: 0.18,
   maxSpanCoverage: 1.15,
+  minSkewScore: 0.25,
 } as const;
 
 export const CAPTURE_RULES = {
@@ -41,6 +47,7 @@ export const CAPTURE_RULES = {
   minSpanCoverage: 0.80,
   maxSpanCoverage: 1.06,
   outerTolerance: 0.02,
+  minSkewScore: 0.55,
 } as const;
 
 export const RELAXED_CAPTURE_RULES = {
@@ -50,6 +57,7 @@ export const RELAXED_CAPTURE_RULES = {
   minSpanCoverage: 0.78,
   maxSpanCoverage: 1.10,
   outerTolerance: 0.035,
+  minSkewScore: 0.45,
 } as const;
 
 export const DEFAULT_DETECTION_THRESHOLDS = {

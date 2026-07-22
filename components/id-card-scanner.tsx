@@ -159,6 +159,14 @@ function DebugOverlay({
       `corner(TL/TR/BR/BL)=${f(metrics.captureCornerTL)} ${f(metrics.captureCornerTR)} ${f(metrics.captureCornerBR)} ${f(metrics.captureCornerBL)}`,
       `meetsMinGeom=${yn(metrics.meetsMinimumGeometry)}`,
       `meetsRelaxGeom=${yn(metrics.meetsRelaxedGeometry)}`,
+      ``,
+      `--- Skew ---`,
+      `presSkewScore=${f(metrics.presenceSkewScore)}`,
+      `presParallelism=${f(metrics.presenceParallelismScore)}`,
+      `presSlopes(T/R/B/L)=${f(metrics.presenceEdgeSlopeTop, 4)} ${f(metrics.presenceEdgeSlopeRight, 4)} ${f(metrics.presenceEdgeSlopeBottom, 4)} ${f(metrics.presenceEdgeSlopeLeft, 4)}`,
+      `capSkewScore=${f(metrics.captureSkewScore)}`,
+      `capParallelism=${f(metrics.captureParallelismScore)}`,
+      `capSlopes(T/R/B/L)=${f(metrics.captureEdgeSlopeTop, 4)} ${f(metrics.captureEdgeSlopeRight, 4)} ${f(metrics.captureEdgeSlopeBottom, 4)} ${f(metrics.captureEdgeSlopeLeft, 4)}`,
     ].join("\n");
   };
 
@@ -212,12 +220,26 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
 
   const isStable = detectionState === "stable";
   const canCapture = isStable && !capturedImage;
-  const statusUi =
-    autoProgress > 0
+
+  // Surface tilt guidance when card is detected but noticeably skewed
+  const isTilted =
+    detectionState === "card-detected" &&
+    debugMetrics?.captureSkewScore != null &&
+    debugMetrics.captureSkewScore < 0.35;
+
+  const baseStatusUi =
+    captureMode === "auto" && detectionState === "stable"
       ? AUTO_STABLE_STATUS_UI
-      : captureMode === "auto" && detectionState === "stable"
-        ? AUTO_STABLE_STATUS_UI
-        : STATUS_UI[detectionState];
+      : STATUS_UI[detectionState];
+
+  const statusUi = isTilted
+    ? {
+        text: "จัดบัตรให้ตรง ไม่เอียง",
+        dotClassName: "bg-amber-400 shadow-[0_0_8px_#fbbf24]",
+      }
+    : autoProgress > 0
+      ? AUTO_STABLE_STATUS_UI
+      : baseStatusUi;
 
   // Smooth Auto-capture progress: 0.0 → 1.0 over 1,800ms
   useEffect(() => {

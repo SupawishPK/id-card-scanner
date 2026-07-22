@@ -7,6 +7,8 @@ import {
   EDGE_LUMA_DELTA_THRESHOLD,
   EDGE_SCAN_INSET_RATIO,
   ID_CARD_ASPECT_RATIO,
+  MAX_EDGE_SLOPE,
+  MAX_PARALLELISM_ERROR,
   PRESENCE_RULES,
   RELAXED_CAPTURE_RULES,
   RELAXED_PRESENCE_RULES,
@@ -350,6 +352,8 @@ export function updateReadiness(
 type EdgeMeasurement = {
   score: number;
   position: number;
+  /** Edge tilt slope in radians — 0.0 = perfectly level/straight. Positive = tilted clockwise. */
+  slope: number;
 };
 
 type CardEdges = {
@@ -386,6 +390,12 @@ type GeometryMetrics = {
   averageCornerScore: number;
   minimumEdgeScore: number;
   minimumCornerScore: number;
+  topEdgeSlope: number;
+  bottomEdgeSlope: number;
+  leftEdgeSlope: number;
+  rightEdgeSlope: number;
+  parallelismScore: number;
+  skewScore: number;
 };
 
 export type CardPresenceMetrics = {
@@ -401,6 +411,9 @@ export type CardPresenceMetrics = {
   interiorBackgroundContrast: number;
   averageEdgeScore: number;
   averageCornerScore: number;
+  skewScore: number;
+  parallelismScore: number;
+  edgeSlopes: { top: number; right: number; bottom: number; left: number };
 };
 
 export type CaptureAlignmentMetrics = {
@@ -412,6 +425,9 @@ export type CaptureAlignmentMetrics = {
   captureConfidence: number;
   meetsMinimumGeometry: boolean;
   meetsRelaxedGeometry: boolean;
+  skewScore: number;
+  parallelismScore: number;
+  edgeSlopes: { top: number; right: number; bottom: number; left: number };
 };
 
 function clamp01(value: number) {
@@ -434,8 +450,14 @@ function scoreEdgePositions(
   scanlines: number,
   bandWidth: number,
   dimension: number,
+  /** Σ(position × scanlineCoordinate) — for linear regression slope */
+  positionScanlineCrossSum?: number,
+  /** Σ(scanlineCoordinate) */
+  scanlineSum?: number,
+  /** Σ(scanlineCoordinate²) */
+  scanlineSquaredSum?: number,
 ): EdgeMeasurement {
-  if (!positionCount || !scanlines) return { score: 0, position: 0 };
+  if (!positionCount || !scanlines) return { score: 0, position: 0, slope: 0 };
 
   const mean = positionSum / positionCount;
   const variance = Math.max(
@@ -454,9 +476,29 @@ function scoreEdgePositions(
     (consistentDirections / positionCount - 0.5) * 2,
   );
 
+  // Compute edge slope via linear regression: slope = Δposition / Δscanline
+  // slope = (n·Σ(xy) − Σx·Σy) / (n·Σ(y²) − (Σy)²)
+  let slope = 0;
+  if (
+    positionScanlineCrossSum !== undefined &&
+    scanlineSum !== undefined &&
+    scanlineSquaredSum !== undefined &&
+    positionCount > 2
+  ) {
+    const n = positionCount;
+    const denominator = n * scanlineSquaredSum - scanlineSum * scanlineSum;
+    if (Math.abs(denominator) > 1e-10) {
+      const rawSlope =
+        (n * positionScanlineCrossSum - positionSum * scanlineSum) / denominator;
+      // Normalize to radians relative to image dimension
+      slope = Math.atan(rawSlope / Math.max(1, dimension));
+    }
+  }
+
   return {
     score: support * (0.08 + alignment * 0.72 + directionScore * 0.2),
     position: mean / dimension,
+    slope,
   };
 }
 
@@ -477,13 +519,17 @@ function measureVerticalEdge(
   );
   const yStart = Math.max(0, alignUp(height * scanStartRatio, step));
   const yEnd = Math.min(height - 1, alignDown(height * scanEndRatio, step));
-  if (xEnd < xStart || yEnd < yStart) return { score: 0, position: 0 };
+  if (xEnd < xStart || yEnd < yStart) return { score: 0, position: 0, slope: 0 };
 
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
   let positiveDirectionCount = 0;
   let scanlines = 0;
+  // Linear regression accumulators for edge slope (slope = dx/dy)
+  let positionScanlineCrossSum = 0;
+  let scanlineSum = 0;
+  let scanlineSquaredSum = 0;
 
   for (let y = yStart; y <= yEnd; y += step) {
     let strongestDelta = 0;
@@ -506,6 +552,9 @@ function measureVerticalEdge(
       positionSum += strongestPosition;
       positionSquaredSum += strongestPosition * strongestPosition;
       if (strongestSignedDelta >= 0) positiveDirectionCount += 1;
+      positionScanlineCrossSum += strongestPosition * y;
+      scanlineSum += y;
+      scanlineSquaredSum += y * y;
     }
     scanlines += 1;
   }
@@ -518,6 +567,9 @@ function measureVerticalEdge(
     scanlines,
     xEnd - xStart + step,
     width,
+    positionScanlineCrossSum,
+    scanlineSum,
+    scanlineSquaredSum,
   );
 }
 
@@ -538,13 +590,17 @@ function measureHorizontalEdge(
   );
   const xStart = Math.max(0, alignUp(width * scanStartRatio, step));
   const xEnd = Math.min(width - 1, alignDown(width * scanEndRatio, step));
-  if (yEnd < yStart || xEnd < xStart) return { score: 0, position: 0 };
+  if (yEnd < yStart || xEnd < xStart) return { score: 0, position: 0, slope: 0 };
 
   let positionCount = 0;
   let positionSum = 0;
   let positionSquaredSum = 0;
   let positiveDirectionCount = 0;
   let scanlines = 0;
+  // Linear regression accumulators for edge slope (slope = dy/dx)
+  let positionScanlineCrossSum = 0;
+  let scanlineSum = 0;
+  let scanlineSquaredSum = 0;
 
   for (let x = xStart; x <= xEnd; x += step) {
     let strongestDelta = 0;
@@ -567,6 +623,9 @@ function measureHorizontalEdge(
       positionSum += strongestPosition;
       positionSquaredSum += strongestPosition * strongestPosition;
       if (strongestSignedDelta >= 0) positiveDirectionCount += 1;
+      positionScanlineCrossSum += strongestPosition * x;
+      scanlineSum += x;
+      scanlineSquaredSum += x * x;
     }
     scanlines += 1;
   }
@@ -579,6 +638,9 @@ function measureHorizontalEdge(
     scanlines,
     yEnd - yStart + step,
     height,
+    positionScanlineCrossSum,
+    scanlineSum,
+    scanlineSquaredSum,
   );
 }
 
@@ -769,6 +831,37 @@ function analyzeGeometry(
     step,
   );
 
+  // Compute skew / rotation quality from per-edge slopes
+  const topSlope = edges.top.slope;
+  const rightSlope = edges.right.slope;
+  const bottomSlope = edges.bottom.slope;
+  const leftSlope = edges.left.slope;
+
+  // Edge straightness: how close each edge is to perfectly horizontal / vertical
+  const straightness = (s: number) => clamp01(1 - Math.abs(s) / MAX_EDGE_SLOPE);
+  const topStraight = straightness(topSlope);
+  const bottomStraight = straightness(bottomSlope);
+  const leftStraight = straightness(leftSlope);
+  const rightStraight = straightness(rightSlope);
+
+  // Parallelism: opposite edges should have matching slopes
+  const hParallelism = clamp01(
+    1 - Math.abs(topSlope - bottomSlope) / MAX_PARALLELISM_ERROR,
+  );
+  const vParallelism = clamp01(
+    1 - Math.abs(leftSlope - rightSlope) / MAX_PARALLELISM_ERROR,
+  );
+  const parallelismScore = Math.min(hParallelism, vParallelism);
+
+  // Combined skew score (equal weights across all dimensions)
+  const skewScore = clamp01(
+    topStraight * 0.2 +
+      bottomStraight * 0.2 +
+      leftStraight * 0.2 +
+      rightStraight * 0.2 +
+      parallelismScore * 0.2,
+  );
+
   return {
     edgeScores,
     cornerScores,
@@ -805,6 +898,12 @@ function analyzeGeometry(
       cornerScores.bottomRight,
       cornerScores.bottomLeft,
     ),
+    topEdgeSlope: topSlope,
+    bottomEdgeSlope: bottomSlope,
+    leftEdgeSlope: leftSlope,
+    rightEdgeSlope: rightSlope,
+    parallelismScore,
+    skewScore,
   };
 }
 
@@ -816,6 +915,7 @@ function passesCoverageRules(
     minAspectScore: number;
     minSpanCoverage: number;
     maxSpanCoverage: number;
+    minSkewScore?: number;
   },
 ) {
   return (
@@ -825,7 +925,8 @@ function passesCoverageRules(
     metrics.widthCoverage >= rules.minSpanCoverage &&
     metrics.heightCoverage >= rules.minSpanCoverage &&
     metrics.widthCoverage <= rules.maxSpanCoverage &&
-    metrics.heightCoverage <= rules.maxSpanCoverage
+    metrics.heightCoverage <= rules.maxSpanCoverage &&
+    (rules.minSkewScore == null || metrics.skewScore >= rules.minSkewScore)
   );
 }
 
@@ -929,11 +1030,12 @@ export function detectCardPresence(
     (metrics.spanCoverage - PRESENCE_RULES.minSpanCoverage) / 0.35,
   );
   const cardPresenceConfidence = clamp01(
-    metrics.averageEdgeScore * 0.42 +
-      metrics.averageCornerScore * 0.23 +
-      metrics.aspectScore * 0.18 +
-      metrics.contrastScore * 0.1 +
-      coverageConfidence * 0.07,
+    metrics.averageEdgeScore * 0.40 +
+      metrics.averageCornerScore * 0.20 +
+      metrics.aspectScore * 0.15 +
+      metrics.contrastScore * 0.08 +
+      coverageConfidence * 0.07 +
+      metrics.skewScore * 0.10,
   );
 
   return {
@@ -949,6 +1051,14 @@ export function detectCardPresence(
     interiorBackgroundContrast: metrics.interiorBackgroundContrast,
     averageEdgeScore: metrics.averageEdgeScore,
     averageCornerScore: metrics.averageCornerScore,
+    skewScore: metrics.skewScore,
+    parallelismScore: metrics.parallelismScore,
+    edgeSlopes: {
+      top: metrics.topEdgeSlope,
+      right: metrics.rightEdgeSlope,
+      bottom: metrics.bottomEdgeSlope,
+      left: metrics.leftEdgeSlope,
+    },
   };
 }
 
@@ -994,11 +1104,12 @@ export function detectCaptureAlignment(
     step,
   );
   const captureConfidence = clamp01(
-    metrics.averageEdgeScore * 0.42 +
-      metrics.averageCornerScore * 0.18 +
-      metrics.contrastScore * 0.15 +
-      metrics.aspectScore * 0.15 +
-      clamp01(metrics.spanCoverage) * 0.1,
+    metrics.averageEdgeScore * 0.40 +
+      metrics.averageCornerScore * 0.15 +
+      metrics.contrastScore * 0.12 +
+      metrics.aspectScore * 0.12 +
+      clamp01(metrics.spanCoverage) * 0.09 +
+      metrics.skewScore * 0.12,
   );
 
   return {
@@ -1019,6 +1130,14 @@ export function detectCaptureAlignment(
         guide.far,
         RELAXED_CAPTURE_RULES.outerTolerance,
       ),
+    skewScore: metrics.skewScore,
+    parallelismScore: metrics.parallelismScore,
+    edgeSlopes: {
+      top: metrics.topEdgeSlope,
+      right: metrics.rightEdgeSlope,
+      bottom: metrics.bottomEdgeSlope,
+      left: metrics.leftEdgeSlope,
+    },
   };
 }
 
@@ -1106,6 +1225,19 @@ export type DetectionDebugMetrics = {
   captureCornerTR: number | null;
   captureCornerBR: number | null;
   captureCornerBL: number | null;
+  // Skew / rotation
+  presenceSkewScore: number;
+  presenceParallelismScore: number;
+  presenceEdgeSlopeTop: number;
+  presenceEdgeSlopeRight: number;
+  presenceEdgeSlopeBottom: number;
+  presenceEdgeSlopeLeft: number;
+  captureSkewScore: number | null;
+  captureParallelismScore: number | null;
+  captureEdgeSlopeTop: number | null;
+  captureEdgeSlopeRight: number | null;
+  captureEdgeSlopeBottom: number | null;
+  captureEdgeSlopeLeft: number | null;
 };
 
 export type FrameProcessingResult = {
@@ -1346,6 +1478,19 @@ export function processScannerFrame({
     captureCornerTR: captureAlignment?.cornerScores.topRight ?? null,
     captureCornerBR: captureAlignment?.cornerScores.bottomRight ?? null,
     captureCornerBL: captureAlignment?.cornerScores.bottomLeft ?? null,
+    // Skew / rotation
+    presenceSkewScore: cardPresence.skewScore,
+    presenceParallelismScore: cardPresence.parallelismScore,
+    presenceEdgeSlopeTop: cardPresence.edgeSlopes.top,
+    presenceEdgeSlopeRight: cardPresence.edgeSlopes.right,
+    presenceEdgeSlopeBottom: cardPresence.edgeSlopes.bottom,
+    presenceEdgeSlopeLeft: cardPresence.edgeSlopes.left,
+    captureSkewScore: captureAlignment?.skewScore ?? null,
+    captureParallelismScore: captureAlignment?.parallelismScore ?? null,
+    captureEdgeSlopeTop: captureAlignment?.edgeSlopes.top ?? null,
+    captureEdgeSlopeRight: captureAlignment?.edgeSlopes.right ?? null,
+    captureEdgeSlopeBottom: captureAlignment?.edgeSlopes.bottom ?? null,
+    captureEdgeSlopeLeft: captureAlignment?.edgeSlopes.left ?? null,
   };
 
   return {
