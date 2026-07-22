@@ -1,2 +1,2 @@
 :HL["/id-card-scanner/_next/static/chunks/3zhgkahrjjr0t.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"fCnQjgnz__GqPkS2K2-W5"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"7uiKhtKJbfS-creQXSFtG"}
