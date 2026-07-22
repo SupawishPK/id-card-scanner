@@ -5,16 +5,26 @@ export type ITrackCapabilities = MediaTrackCapabilities & {
 };
 
 export const requestCamera = async (): Promise<MediaStream> => {
+  // Request the highest resolution the device supports
+  // width/height with ideal=9999 lets the browser negotiate max available
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 1920, min: 1280 },
-      height: { ideal: 1080, min: 720 },
+      width: { ideal: 9999 },
+      height: { ideal: 9999 },
     },
   };
 
-  return navigator.mediaDevices.getUserMedia(constraints);
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch {
+    // Fallback to safe minimum if device rejects the extreme ideal
+    return navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" } },
+    });
+  }
 };
 
 export const isTorchSupported = (stream: MediaStream): boolean => {
@@ -43,10 +53,16 @@ export const setTorch = async (
 
 export const cameraErrorMessage = (error: unknown): string => {
   if (error instanceof DOMException) {
-    if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+    if (
+      error.name === "NotAllowedError" ||
+      error.name === "PermissionDeniedError"
+    ) {
       return "กรุณะอนุญาตให้ใช้งานกล้อง เพื่อสแกนบัตรประชาชน";
     }
-    if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+    if (
+      error.name === "NotFoundError" ||
+      error.name === "DevicesNotFoundError"
+    ) {
       return "ไม่พบกล้องในอุปกรณ์ของคุณ";
     }
     if (error.name === "NotReadableError" || error.name === "TrackStartError") {

@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIdCardScanner } from "./use-scanner";
-import { CameraGuide, CameraHeader, CaptureButton } from "./camera-views";
+import { CameraHeader, CameraOverlay } from "./camera-views";
 import { DebugOverlay, ValidationDialogs } from "./dialog-views";
 import {
   AUTO_CAPTURE_DURATION_MS,
+  AUTO_STABLE_STATUS,
+  STATUS_UI,
   type IValidationState,
 } from "./theme";
 
@@ -53,6 +55,11 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
   const isStable = scannerStatus === "stable";
   const canCapture = isStable && !capturedImage;
+
+  const statusUi =
+    autoProgress > 0 || scannerStatus === "stable"
+      ? AUTO_STABLE_STATUS
+      : STATUS_UI[scannerStatus];
 
   // Auto-capture when stable
   useEffect(() => {
@@ -138,11 +145,6 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     };
   }, [capturedImage, onVerify]);
 
-  const onCaptureCard = () => {
-    const success = capturePhoto();
-    if (success) setValidationState("checking");
-  };
-
   const onRetryCard = () => {
     setCustomError(null);
     setValidationState("idle");
@@ -173,21 +175,16 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
       <CameraHeader onBack={onBack} />
 
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-6 py-4">
-        <CameraGuide
-          guideRef={guideRef}
-          scannerStatus={scannerStatus}
-          autoProgress={autoProgress}
-        />
-      </div>
+      <CameraOverlay
+        guideRef={guideRef}
+        scannerStatus={scannerStatus}
+        autoProgress={autoProgress}
+        statusUi={statusUi}
+      />
 
       <DebugOverlay metrics={debugMetrics} scannerStatus={scannerStatus} />
 
-      <CaptureButton
-        canCapture={canCapture}
-        autoProgress={autoProgress}
-        onCapture={onCaptureCard}
-      />
+      <div className="relative z-10 pb-[max(2rem,env(safe-area-inset-bottom))]" />
 
       <ValidationDialogs
         validationState={validationState}

@@ -80,7 +80,8 @@ export const captureRoiImage = (
     canvas.height,
   );
 
-  const dataUrl = canvas.toDataURL("image/png");
+  // Export at native video pixel resolution, max JPEG quality
+  const dataUrl = canvas.toDataURL("image/jpeg", 1.0);
   context.clearRect(0, 0, canvas.width, canvas.height);
   return dataUrl;
 };
