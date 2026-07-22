@@ -18,37 +18,37 @@ export const EDGE_LUMA_DELTA_THRESHOLD = 10;
 export const EDGE_DELTA_THRESHOLD = 18;
 
 export const PRESENCE_RULES = {
-  minEdgeScore: 0.42,
+  minEdgeScore: 0.10,
   minCornerScore: 0.12,
-  minAspectScore: 0.48,
-  minSpanCoverage: 0.23,
-  maxSpanCoverage: 1.08,
+  minAspectScore: 0.00,
+  minSpanCoverage: 0.20,
+  maxSpanCoverage: 1.12,
 } as const;
 
 export const RELAXED_PRESENCE_RULES = {
-  minEdgeScore: 0.4,
+  minEdgeScore: 0.08,
   minCornerScore: 0.08,
-  minAspectScore: 0.38,
-  minSpanCoverage: 0.2,
-  maxSpanCoverage: 1.12,
+  minAspectScore: 0.00,
+  minSpanCoverage: 0.18,
+  maxSpanCoverage: 1.15,
 } as const;
 
 export const CAPTURE_RULES = {
   minEdgeScore: 0.38,
   minCornerScore: 0.12,
-  minAspectScore: 0.5,
-  // Card must cover at least 90% of the guide overlay frame.
-  minSpanCoverage: 0.9,
-  maxSpanCoverage: 1.04,
+  minAspectScore: 0.50,
+  // Card must cover at least 80% of the guide overlay frame.
+  minSpanCoverage: 0.80,
+  maxSpanCoverage: 1.06,
   outerTolerance: 0.02,
 } as const;
 
 export const RELAXED_CAPTURE_RULES = {
   minEdgeScore: 0.36,
-  minCornerScore: 0.1,
-  minAspectScore: 0.4,
-  minSpanCoverage: 0.88,
-  maxSpanCoverage: 1.08,
+  minCornerScore: 0.10,
+  minAspectScore: 0.40,
+  minSpanCoverage: 0.78,
+  maxSpanCoverage: 1.10,
   outerTolerance: 0.035,
 } as const;
 
