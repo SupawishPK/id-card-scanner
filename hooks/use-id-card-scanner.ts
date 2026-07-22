@@ -14,6 +14,7 @@ import {
 } from "@/lib/id-card-scanner-config";
 import {
   type CameraState,
+  type DetectionDebugMetrics,
   type DetectionState,
   type DistanceHint,
   type SourceRect,
@@ -28,7 +29,7 @@ import {
   setTorch,
 } from "@/lib/id-card-scanner-engine";
 
-export type { DetectionState, CameraState, DistanceHint, ScannerConfig };
+export type { DetectionState, CameraState, DistanceHint, ScannerConfig, DetectionDebugMetrics };
 export { DEFAULT_SCANNER_CONFIG };
 
 export type ScannerOptions = {
@@ -77,6 +78,7 @@ export function useIdCardScanner({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
+  const [debugMetrics, setDebugMetrics] = useState<DetectionDebugMetrics | null>(null);
 
   // 3. Control & Loop Flags
   const streamRef = useRef<MediaStream | null>(null);
@@ -208,6 +210,7 @@ export function useIdCardScanner({
       setDistanceHint((current) =>
         current === result.distanceHint ? current : result.distanceHint,
       );
+      setDebugMetrics(result.debugMetrics);
     },
     [config, roiRef, videoRef],
   );
@@ -323,6 +326,7 @@ export function useIdCardScanner({
     capturedImage,
     torchAvailable,
     isTorchOn,
+    debugMetrics,
     capturePhoto: capture,
     toggleTorch,
     retryCapture,

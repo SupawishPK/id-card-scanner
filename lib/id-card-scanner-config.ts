@@ -12,8 +12,10 @@ export const CARD_DETECTION_CONFIG = {
 
 export const EDGE_SCAN_INSET_RATIO = 0.14;
 export const CORNER_RADIUS_RATIO = 0.055;
-export const EDGE_LUMA_DELTA_THRESHOLD = 16;
-export const EDGE_DELTA_THRESHOLD = 24;
+/** Minimum luma delta to register as an edge (lower = more sensitive to low-contrast card edges on fabric/textured backgrounds) */
+export const EDGE_LUMA_DELTA_THRESHOLD = 10;
+/** Luma delta threshold for frame-level edge density calculation */
+export const EDGE_DELTA_THRESHOLD = 18;
 
 export const PRESENCE_RULES = {
   minEdgeScore: 0.42,

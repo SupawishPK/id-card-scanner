@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import Script from "next/script";
 import "./globals.css";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -25,14 +24,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="th">
-      <head>
-        <Script
-          type="module"
-          src="https://jelly-ui.com/package.js"
-          strategy="beforeInteractive"
-        />
-      </head>
-      {/* Grammarly injects attributes directly on body before React hydrates. */}
       <body suppressHydrationWarning>{children}</body>
     </html>
   );

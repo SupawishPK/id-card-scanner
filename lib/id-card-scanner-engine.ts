@@ -396,6 +396,11 @@ export type CardPresenceMetrics = {
   minimumCornerScore: number;
   meetsMinimumCard: boolean;
   meetsRelaxedCard: boolean;
+  edgeScores: EdgeScores;
+  cornerScores: CornerScores;
+  interiorBackgroundContrast: number;
+  averageEdgeScore: number;
+  averageCornerScore: number;
 };
 
 export type CaptureAlignmentMetrics = {
@@ -939,6 +944,11 @@ export function detectCardPresence(
     minimumCornerScore: metrics.minimumCornerScore,
     meetsMinimumCard: passesCoverageRules(metrics, PRESENCE_RULES),
     meetsRelaxedCard: passesCoverageRules(metrics, RELAXED_PRESENCE_RULES),
+    edgeScores: metrics.edgeScores,
+    cornerScores: metrics.cornerScores,
+    interiorBackgroundContrast: metrics.interiorBackgroundContrast,
+    averageEdgeScore: metrics.averageEdgeScore,
+    averageCornerScore: metrics.averageCornerScore,
   };
 }
 
@@ -1049,6 +1059,55 @@ export type FrameProcessingParams = {
 
 export type DistanceHint = "too-far" | "too-close" | "fit" | null;
 
+export type DetectionDebugMetrics = {
+  // Frame-level
+  mean: number;
+  variance: number;
+  motion: number;
+  edgeDensity: number;
+  hasUsableLight: boolean;
+  hasCardDetails: boolean;
+  hasPresenceDetails: boolean;
+  // Card presence
+  cardPresenceConfidence: number;
+  presenceSpanCoverage: number;
+  presenceAspectScore: number;
+  presenceMinEdgeScore: number;
+  presenceMinCornerScore: number;
+  presenceAvgEdgeScore: number;
+  presenceAvgCornerScore: number;
+  meetsMinimumCard: boolean;
+  meetsRelaxedCard: boolean;
+  presenceEdgeTop: number;
+  presenceEdgeRight: number;
+  presenceEdgeBottom: number;
+  presenceEdgeLeft: number;
+  // Capture alignment (may be null)
+  captureConfidence: number | null;
+  captureAspectScore: number | null;
+  captureCoverageScore: number | null;
+  captureMinEdgeScore: number | null;
+  captureMinCornerScore: number | null;
+  captureAvgEdgeScore: number | null;
+  captureAvgCornerScore: number | null;
+  captureInteriorBgContrast: number | null;
+  meetsMinimumGeometry: boolean | null;
+  meetsRelaxedGeometry: boolean | null;
+  captureEdgeTop: number | null;
+  captureEdgeRight: number | null;
+  captureEdgeBottom: number | null;
+  captureEdgeLeft: number | null;
+  // Corner scores
+  presenceCornerTL: number;
+  presenceCornerTR: number;
+  presenceCornerBR: number;
+  presenceCornerBL: number;
+  captureCornerTL: number | null;
+  captureCornerTR: number | null;
+  captureCornerBR: number | null;
+  captureCornerBL: number | null;
+};
+
 export type FrameProcessingResult = {
   sourceRect: SourceRect;
   canvas: HTMLCanvasElement;
@@ -1059,6 +1118,7 @@ export type FrameProcessingResult = {
   isCaptureAligned: boolean;
   isCaptureReady: boolean;
   distanceHint: DistanceHint;
+  debugMetrics: DetectionDebugMetrics;
 };
 
 export function processScannerFrame({
@@ -1217,6 +1277,77 @@ export function processScannerFrame({
         : "fit"
     : null;
 
+  const debugMetrics: DetectionDebugMetrics = {
+    mean,
+    variance,
+    motion: previousLuma ? motion : -1,
+    edgeDensity,
+    hasUsableLight,
+    hasCardDetails,
+    hasPresenceDetails,
+    cardPresenceConfidence: cardPresence.cardPresenceConfidence,
+    presenceSpanCoverage: cardPresence.spanCoverage,
+    presenceAspectScore: cardPresence.aspectScore,
+    presenceMinEdgeScore: cardPresence.minimumEdgeScore,
+    presenceMinCornerScore: cardPresence.minimumCornerScore,
+    presenceAvgEdgeScore: cardPresence.averageEdgeScore,
+    presenceAvgCornerScore: cardPresence.averageCornerScore,
+    meetsMinimumCard: cardPresence.meetsMinimumCard,
+    meetsRelaxedCard: cardPresence.meetsRelaxedCard,
+    presenceEdgeTop: cardPresence.edgeScores.top,
+    presenceEdgeRight: cardPresence.edgeScores.right,
+    presenceEdgeBottom: cardPresence.edgeScores.bottom,
+    presenceEdgeLeft: cardPresence.edgeScores.left,
+    presenceCornerTL: cardPresence.cornerScores.topLeft,
+    presenceCornerTR: cardPresence.cornerScores.topRight,
+    presenceCornerBR: cardPresence.cornerScores.bottomRight,
+    presenceCornerBL: cardPresence.cornerScores.bottomLeft,
+    captureConfidence: captureAlignment?.captureConfidence ?? null,
+    captureAspectScore: captureAlignment?.aspectScore ?? null,
+    captureCoverageScore: captureAlignment?.coverageScore ?? null,
+    captureMinEdgeScore: captureAlignment
+      ? Math.min(
+          captureAlignment.edgeScores.top,
+          captureAlignment.edgeScores.right,
+          captureAlignment.edgeScores.bottom,
+          captureAlignment.edgeScores.left,
+        )
+      : null,
+    captureMinCornerScore: captureAlignment
+      ? Math.min(
+          captureAlignment.cornerScores.topLeft,
+          captureAlignment.cornerScores.topRight,
+          captureAlignment.cornerScores.bottomRight,
+          captureAlignment.cornerScores.bottomLeft,
+        )
+      : null,
+    captureAvgEdgeScore: captureAlignment
+      ? (captureAlignment.edgeScores.top +
+          captureAlignment.edgeScores.right +
+          captureAlignment.edgeScores.bottom +
+          captureAlignment.edgeScores.left) /
+        4
+      : null,
+    captureAvgCornerScore: captureAlignment
+      ? (captureAlignment.cornerScores.topLeft +
+          captureAlignment.cornerScores.topRight +
+          captureAlignment.cornerScores.bottomRight +
+          captureAlignment.cornerScores.bottomLeft) /
+        4
+      : null,
+    captureInteriorBgContrast: captureAlignment?.interiorBackgroundContrast ?? null,
+    meetsMinimumGeometry: captureAlignment?.meetsMinimumGeometry ?? null,
+    meetsRelaxedGeometry: captureAlignment?.meetsRelaxedGeometry ?? null,
+    captureEdgeTop: captureAlignment?.edgeScores.top ?? null,
+    captureEdgeRight: captureAlignment?.edgeScores.right ?? null,
+    captureEdgeBottom: captureAlignment?.edgeScores.bottom ?? null,
+    captureEdgeLeft: captureAlignment?.edgeScores.left ?? null,
+    captureCornerTL: captureAlignment?.cornerScores.topLeft ?? null,
+    captureCornerTR: captureAlignment?.cornerScores.topRight ?? null,
+    captureCornerBR: captureAlignment?.cornerScores.bottomRight ?? null,
+    captureCornerBL: captureAlignment?.cornerScores.bottomLeft ?? null,
+  };
+
   return {
     sourceRect,
     canvas,
@@ -1227,5 +1358,6 @@ export function processScannerFrame({
     isCaptureAligned,
     isCaptureReady,
     distanceHint,
+    debugMetrics,
   };
 }
