@@ -225,7 +225,7 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
   const isTilted =
     detectionState === "card-detected" &&
     debugMetrics?.captureSkewScore != null &&
-    debugMetrics.captureSkewScore < 0.35;
+    debugMetrics.captureSkewScore < 0.70;
 
   const baseStatusUi =
     captureMode === "auto" && detectionState === "stable"
