@@ -309,6 +309,20 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
     retryCapture();
   };
 
+  const handleCopyImage = async () => {
+    if (!capturedImage) return;
+    try {
+      const response = await fetch(capturedImage);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob }),
+      ]);
+    } catch {
+      // Fallback: open in new tab for manual copy
+      window.open(capturedImage, "_blank");
+    }
+  };
+
   return (
     <section
       className={`relative isolate h-dvh w-full overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10 ${className}`}
@@ -570,6 +584,18 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
                 className="absolute inset-0 size-full object-cover"
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => void handleCopyImage()}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/10 active:scale-95 transition-all"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              คัดลอกรูป (PNG)
+            </button>
           </div>
 
           <button
