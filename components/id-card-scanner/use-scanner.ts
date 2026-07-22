@@ -1,126 +1,78 @@
 "use client";
 
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  CARD_DETECTION_CONFIG,
-  DEFAULT_SCANNER_CONFIG,
-  type ScannerConfig,
-} from "@/lib/id-card-scanner-config";
-import {
-  type CameraState,
-  type DetectionDebugMetrics,
-  type DetectionState,
-  type DistanceHint,
-  type SourceRect,
-  cameraErrorMessage,
-  captureRoiImage,
-  createReadinessState,
-  getSourceRect,
-  isTorchSupported,
-  processScannerFrame,
-  requestCamera,
-  resetReadiness,
-  setTorch,
-} from "@/lib/id-card-scanner-engine";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ANALYSIS, CARD_DETECTION_CONFIG, DEFAULT_SCANNER_CONFIG, type IScannerConfig } from "./config";
+import { cameraErrorMessage, isTorchSupported, requestCamera, setTorch, type ICameraState } from "./camera";
+import { captureRoiImage, expandRoiBounds, getRoiBounds, type IRoiBounds } from "./crop";
+import { createReadinessState, type IReadinessState } from "./analysis";
+import { processScannerFrame, type IDebugMetrics, type IDistanceHint, type IScannerStatus } from "./geometry";
 
-export type { DetectionState, CameraState, DistanceHint, ScannerConfig, DetectionDebugMetrics };
+export type { IScannerStatus, ICameraState, IDistanceHint, IScannerConfig, IDebugMetrics };
 export { DEFAULT_SCANNER_CONFIG };
 
-export type ScannerOptions = {
-  /** Reference ถึงตัวแปร `<video>` element ที่แสดงภาพสดจากกล้อง */
+export type IScannerOptions = {
   videoRef: RefObject<HTMLVideoElement | null>;
-  /** Reference ถึงตัวแปร HTML Element ที่เป็นกรอบสแกนบัตร (ROI Guide) */
   roiRef: RefObject<HTMLElement | null>;
-  /** จำนวนเฟรมขั้นต่ำที่ต้องการให้นิ่ง */
-  stableFrames?: number;
-  /** ระยะเวลาขั้นต่ำ (ms) ที่ต้องการให้นิ่ง */
-  minimumStableMs?: number;
-  /** สามารถส่งค่า Config เพื่อปรับแต่งความแม่นยำ/ความเร็วในการสแกนได้เพิ่มเติม */
-  config?: ScannerConfig;
 };
 
-export function useIdCardScanner({
-  videoRef,
-  roiRef,
-  stableFrames = DEFAULT_SCANNER_CONFIG.stableFrames,
-  minimumStableMs = DEFAULT_SCANNER_CONFIG.minimumStableMs,
-  config: customConfig,
-}: ScannerOptions) {
-  // 1. Unified Configuration
-  const customConfigRef = useRef(customConfig);
-  customConfigRef.current = customConfig;
+const ANALYSIS_PIXEL_COUNT = ANALYSIS.width * ANALYSIS.height;
 
-  const config = useMemo(
-    () => ({
-      ...DEFAULT_SCANNER_CONFIG,
-      stableFrames,
-      minimumStableMs,
-      ...(customConfigRef.current ?? {}),
-    }),
-    [minimumStableMs, stableFrames],
-  );
+interface IFrameState {
+  canvas: HTMLCanvasElement | null;
+  previousLuma: Uint8Array | null;
+  currentLuma: Uint8Array;
+  roiBounds: IRoiBounds | null;
+  needsRectRecalc: boolean;
+  readiness: IReadinessState;
+  hasDetectedCard: boolean;
+  isCaptureAligned: boolean;
+}
 
-  // 2. Public UI States
-  const [cameraState, setCameraState] = useState<CameraState>("idle");
+const createFrameState = (): IFrameState => ({
+  canvas: null,
+  previousLuma: null,
+  currentLuma: new Uint8Array(ANALYSIS_PIXEL_COUNT),
+  roiBounds: null,
+  needsRectRecalc: true,
+  readiness: createReadinessState(),
+  hasDetectedCard: false,
+  isCaptureAligned: false,
+});
+
+const resetFrameState = (fs: IFrameState): void => {
+  fs.canvas = null;
+  fs.previousLuma = null;
+  fs.roiBounds = null;
+  fs.needsRectRecalc = true;
+  fs.hasDetectedCard = false;
+  fs.isCaptureAligned = false;
+  fs.readiness = createReadinessState();
+};
+
+export const useIdCardScanner = ({ videoRef, roiRef }: IScannerOptions) => {
+  const config = DEFAULT_SCANNER_CONFIG;
+
+  const [cameraState, setCameraState] = useState<ICameraState>("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [detectionState, setDetectionState] = useState<DetectionState>("searching");
-  const [distanceHint, setDistanceHint] = useState<DistanceHint>(null);
+  const [scannerStatus, setScannerStatus] = useState<IScannerStatus>("searching");
+  const [distanceHint, setDistanceHint] = useState<IDistanceHint>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
-  const [debugMetrics, setDebugMetrics] = useState<DetectionDebugMetrics | null>(null);
+  const [debugMetrics, setDebugMetrics] = useState<IDebugMetrics | null>(null);
 
-  // 3. Control & Loop Flags
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const cameraRequestIdRef = useRef(0);
   const lastSampleAtRef = useRef(0);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
+  const frameStateRef = useRef(createFrameState());
 
-  // 4. Grouped Frame Processing Buffer & State
-  interface FrameState {
-    canvas: HTMLCanvasElement | null;
-    previousLuma: Uint8Array | null;
-    currentLuma: Uint8Array | null;
-    sourceRect: SourceRect | null;
-    needsRectRecalc: boolean;
-    readiness: ReturnType<typeof createReadinessState>;
-    hasDetectedCard: boolean;
-    isCaptureAligned: boolean;
-  }
-  const frameStateRef = useRef<FrameState>({
-    canvas: null,
-    previousLuma: null,
-    currentLuma: null,
-    sourceRect: null,
-    needsRectRecalc: true,
-    readiness: createReadinessState(),
-    hasDetectedCard: false,
-    isCaptureAligned: false,
-  });
-
-  // Helper: Reset frame analysis buffers & readiness tracking
-  const resetFrameState = useCallback(() => {
-    const fs = frameStateRef.current;
-    fs.canvas = null;
-    fs.previousLuma = null;
-    fs.currentLuma = null;
-    fs.sourceRect = null;
-    fs.needsRectRecalc = true;
-    fs.hasDetectedCard = false;
-    fs.isCaptureAligned = false;
-    resetReadiness(fs.readiness);
+  const resetState = useCallback(() => {
+    resetFrameState(frameStateRef.current);
   }, []);
 
-  // 5. Camera & Pipeline Controls
   const stopCamera = useCallback(() => {
     cameraRequestIdRef.current += 1;
     runningRef.current = false;
@@ -137,23 +89,23 @@ export function useIdCardScanner({
     setTorchAvailable(false);
     setIsTorchOn(false);
     capturedRef.current = false;
-    resetFrameState();
-  }, [resetFrameState, videoRef]);
+    resetState();
+  }, [resetState, videoRef]);
 
   const capture = useCallback((): boolean => {
     const video = videoRef.current;
     const fs = frameStateRef.current;
-    if (!video || !fs.sourceRect || capturedRef.current || !fs.readiness.isReady) return false;
+    if (!video || !fs.roiBounds || capturedRef.current || !fs.readiness.isReady) return false;
 
-    // Expand capture rect by 5% on each side for breathing room, clamped to video bounds
     const pad = CARD_DETECTION_CONFIG.capturePaddingRatio;
-    const padW = fs.sourceRect.sw * pad;
-    const padH = fs.sourceRect.sh * pad;
-    const paddedRect: SourceRect = {
-      sx: Math.max(0, fs.sourceRect.sx - padW),
-      sy: Math.max(0, fs.sourceRect.sy - padH),
-      sw: Math.min(video.videoWidth - fs.sourceRect.sx + padW, fs.sourceRect.sw + padW * 2),
-      sh: Math.min(video.videoHeight - fs.sourceRect.sy + padH, fs.sourceRect.sh + padH * 2),
+    const padW = fs.roiBounds.sw * pad;
+    const padH = fs.roiBounds.sh * pad;
+    const sx = Math.max(0, fs.roiBounds.sx - padW);
+    const sy = Math.max(0, fs.roiBounds.sy - padH);
+    const paddedRect: IRoiBounds = {
+      sx, sy,
+      sw: Math.min(video.videoWidth - sx, fs.roiBounds.sw + padW * 2),
+      sh: Math.min(video.videoHeight - sy, fs.roiBounds.sh + padH * 2),
     };
 
     const dataUrl = captureRoiImage(video, paddedRect);
@@ -167,32 +119,47 @@ export function useIdCardScanner({
   const toggleTorch = useCallback(async () => {
     const stream = streamRef.current;
     if (!stream) return;
-    const next = !isTorchOn;
-    const actual = await setTorch(stream, next);
+    const actual = await setTorch(stream, !isTorchOn);
     setIsTorchOn(actual);
   }, [isTorchOn]);
 
-  // 6. Frame Sampling & Analysis Loop
   const processSample = useCallback(
     (now: number) => {
       const video = videoRef.current;
       const roi = roiRef.current;
-      if (!video || !roi) return;
+      if (!video || !roi || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
       const fs = frameStateRef.current;
-
-      // Recalculate sourceRect only when null or invalidated by resize/orientation change
-      if (!fs.sourceRect || fs.needsRectRecalc) {
-        fs.sourceRect = getSourceRect(video, roi);
+      if (!fs.roiBounds || fs.needsRectRecalc) {
+        fs.roiBounds = getRoiBounds(video, roi);
         fs.needsRectRecalc = false;
       }
-      if (!fs.sourceRect) return;
+      if (!fs.roiBounds) return;
+
+      if (!fs.canvas) {
+        fs.canvas = document.createElement("canvas");
+        fs.canvas.width = CARD_DETECTION_CONFIG.analysisWidth;
+        fs.canvas.height = CARD_DETECTION_CONFIG.analysisHeight;
+      }
+      const context = fs.canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return;
+
+      const expanded = expandRoiBounds(fs.roiBounds, video.videoWidth, video.videoHeight);
+      context.drawImage(
+        video,
+        expanded.sx, expanded.sy, expanded.sw, expanded.sh,
+        0, 0, CARD_DETECTION_CONFIG.analysisWidth, CARD_DETECTION_CONFIG.analysisHeight,
+      );
+
+      const pixels = context.getImageData(
+        0, 0, CARD_DETECTION_CONFIG.analysisWidth, CARD_DETECTION_CONFIG.analysisHeight,
+      ).data;
 
       const result = processScannerFrame({
-        video,
-        roi,
+        pixels,
+        analysisWidth: CARD_DETECTION_CONFIG.analysisWidth,
+        analysisHeight: CARD_DETECTION_CONFIG.analysisHeight,
         now,
-        canvas: fs.canvas,
         previousLuma: fs.previousLuma,
         currentLuma: fs.currentLuma,
         readiness: fs.readiness,
@@ -200,24 +167,16 @@ export function useIdCardScanner({
         hasDetectedCard: fs.hasDetectedCard,
         isCaptureAligned: fs.isCaptureAligned,
         thresholds: config,
-        sourceRect: fs.sourceRect,
       });
 
-      if (!result) return;
-
-      fs.sourceRect = result.sourceRect;
-      fs.canvas = result.canvas;
       fs.previousLuma = result.previousLuma;
       fs.currentLuma = result.currentLuma;
+      fs.readiness = result.readiness;
       fs.hasDetectedCard = result.hasDetectedCard;
       fs.isCaptureAligned = result.isCaptureAligned;
 
-      setDetectionState((current) =>
-        current === result.detectionState ? current : result.detectionState,
-      );
-      setDistanceHint((current) =>
-        current === result.distanceHint ? current : result.distanceHint,
-      );
+      setScannerStatus((current: IScannerStatus) => (current === result.scannerStatus ? current : result.scannerStatus));
+      setDistanceHint((current: IDistanceHint) => (current === result.distanceHint ? current : result.distanceHint));
       setDebugMetrics(result.debugMetrics);
     },
     [config, roiRef, videoRef],
@@ -228,7 +187,6 @@ export function useIdCardScanner({
     runningRef.current = true;
 
     const tick = (now: number) => {
-      // Stop rAF loop immediately if no longer running or already captured photo
       if (!runningRef.current || capturedRef.current) {
         runningRef.current = false;
         animationFrameRef.current = null;
@@ -276,7 +234,6 @@ export function useIdCardScanner({
       video.srcObject = stream;
       await video.play();
 
-      // Guard against component unmount or camera restart while waiting for video.play()
       if (requestId !== cameraRequestIdRef.current) return;
 
       setCameraState("ready");
@@ -293,13 +250,12 @@ export function useIdCardScanner({
 
   const retryCapture = useCallback(() => {
     capturedRef.current = false;
-    resetFrameState();
+    resetState();
     setCapturedImage(null);
-    setDetectionState("searching");
+    setScannerStatus("searching");
     startDetectionLoop();
-  }, [resetFrameState, startDetectionLoop]);
+  }, [resetState, startDetectionLoop]);
 
-  // 7. Lifecycle & Window / Visibility Event Management
   useEffect(() => {
     const handleResize = () => {
       frameStateRef.current.needsRectRecalc = true;
@@ -327,19 +283,8 @@ export function useIdCardScanner({
   }, [startCamera, stopCamera, videoRef]);
 
   return {
-    cameraState,
-    cameraError,
-    detectionState,
-    distanceHint,
-    capturedImage,
-    torchAvailable,
-    isTorchOn,
-    debugMetrics,
-    capturePhoto: capture,
-    toggleTorch,
-    retryCapture,
-    retryCamera: startCamera,
-    stopCamera,
-    config,
+    cameraState, cameraError, scannerStatus, distanceHint, capturedImage,
+    torchAvailable, isTorchOn, debugMetrics, capturePhoto: capture,
+    toggleTorch, retryCapture, retryCamera: startCamera, stopCamera, config,
   };
-}
+};

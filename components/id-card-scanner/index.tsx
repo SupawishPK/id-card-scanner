@@ -1,40 +1,53 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useIdCardScanner } from "@/hooks/use-id-card-scanner";
-import { CameraHeader } from "./sub-components/camera-header";
-import { CameraOverlay } from "./sub-components/camera-overlay";
-import { CameraControls } from "./sub-components/camera-controls";
-import { DebugOverlay } from "./sub-components/debug-overlay";
-import { ValidationDialogs } from "./sub-components/validation-dialogs";
-import { vibrate } from "./utils/haptics";
+import { useIdCardScanner } from "./use-scanner";
+import { CameraControls, CameraHeader, CameraOverlay } from "./camera-views";
+import { DebugOverlay, ValidationDialogs } from "./dialog-views";
 import {
   AUTO_CAPTURE_DURATION_MS,
-  MOCK_VALIDATION_DELAY_MS,
-  MOCK_VALIDATION_PASS_RATE,
   AUTO_STABLE_STATUS,
   STATUS_UI,
-  TILTED_STATUS,
-  type CaptureMode,
-  type ValidationState,
-} from "./constants/scanner-ui.config";
+  type ICaptureMode,
+  type IValidationState,
+} from "./theme";
 
-type IdCardScannerProps = {
-  className?: string;
-  onBack?: () => void;
+const vibrate = (pattern: number | number[]) => {
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {
+    // Ignore vibration errors
+  }
 };
 
-export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
+export type ICustomErrorDetails = {
+  title?: string;
+  description?: string;
+  hint?: string;
+};
+
+export type IVerifyResult = {
+  success: boolean;
+  error?: ICustomErrorDetails;
+} | void;
+
+export type IIdCardScannerProps = {
+  onBack: () => void;
+  onVerify: (capturedImage: string) => Promise<IVerifyResult> | IVerifyResult;
+};
+
+export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
+  const [captureMode, setCaptureMode] = useState<ICaptureMode>("auto");
   const [autoProgress, setAutoProgress] = useState<number>(0);
-  const [validationState, setValidationState] = useState<ValidationState>("idle");
+  const [validationState, setValidationState] = useState<IValidationState>("idle");
+  const [customError, setCustomError] = useState<ICustomErrorDetails | null>(null);
 
   const {
     cameraState,
     cameraError,
-    detectionState,
+    scannerStatus,
     capturedImage,
     torchAvailable,
     isTorchOn,
@@ -45,28 +58,13 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
     retryCamera,
   } = useIdCardScanner({ videoRef, roiRef: guideRef });
 
-  // ── Derived state ─────────────────────────────────────────────────
-
-  const isStable = detectionState === "stable";
+  const isStable = scannerStatus === "stable";
   const canCapture = isStable && !capturedImage;
 
-  const isTilted =
-    detectionState === "card-detected" &&
-    debugMetrics?.captureSkewScore != null &&
-    debugMetrics.captureSkewScore < 0.70;
-
-  const baseStatusUi =
-    captureMode === "auto" && detectionState === "stable"
+  const statusUi =
+    autoProgress > 0 || (captureMode === "auto" && scannerStatus === "stable")
       ? AUTO_STABLE_STATUS
-      : STATUS_UI[detectionState];
-
-  const statusUi = isTilted
-    ? TILTED_STATUS
-    : autoProgress > 0
-      ? AUTO_STABLE_STATUS
-      : baseStatusUi;
-
-  // ── Auto-capture progress ─────────────────────────────────────────
+      : STATUS_UI[scannerStatus];
 
   useEffect(() => {
     if (captureMode !== "auto" || !canCapture) {
@@ -107,30 +105,62 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
     };
   }, [canCapture, captureMode, capturePhoto]);
 
-  // ── Mock validation ───────────────────────────────────────────────
-
   useEffect(() => {
-    if (!capturedImage) return;
-    const timeoutId = window.setTimeout(() => {
-      const passed = Math.random() < MOCK_VALIDATION_PASS_RATE;
-      setValidationState(passed ? "success" : "error");
-    }, MOCK_VALIDATION_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [capturedImage]);
+    if (!capturedImage) {
+      setCustomError(null);
+      return;
+    }
 
-  // ── Actions ───────────────────────────────────────────────────────
+    let isCurrent = true;
+    setValidationState("checking");
+    setCustomError(null);
 
-  const handleCapture = () => {
+    const runVerification = async () => {
+      try {
+        const res = await onVerify(capturedImage);
+        if (!isCurrent) return;
+
+        if (res && typeof res === "object" && "success" in res) {
+          if (res.success) {
+            setValidationState("success");
+          } else {
+            setCustomError(res.error || null);
+            setValidationState("error");
+          }
+        } else {
+          setValidationState("success");
+        }
+      } catch (err: unknown) {
+        if (!isCurrent) return;
+        const errorObj = err as Record<string, string | undefined>;
+        setCustomError({
+          title: errorObj?.title,
+          description: errorObj?.message || errorObj?.description,
+          hint: errorObj?.hint,
+        });
+        setValidationState("error");
+      }
+    };
+
+    void runVerification();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [capturedImage, onVerify]);
+
+  const onCaptureCard = () => {
     const success = capturePhoto();
     if (success) setValidationState("checking");
   };
 
-  const handleRetry = () => {
+  const onRetryCard = () => {
+    setCustomError(null);
     setValidationState("idle");
     retryCapture();
   };
 
-  const handleCopyImage = async () => {
+  const onCopyImage = async () => {
     if (!capturedImage) return;
     try {
       const response = await fetch(capturedImage);
@@ -141,13 +171,8 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────
-
   return (
-    <section
-      className={`relative isolate h-dvh w-full overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10 ${className}`}
-      aria-label="เครื่องสแกนบัตรประชาชน"
-    >
+    <section className="relative isolate h-dvh w-full overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10">
       <video
         ref={videoRef}
         autoPlay muted playsInline disablePictureInPicture
@@ -161,12 +186,12 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
 
       <CameraOverlay
         guideRef={guideRef}
-        detectionState={detectionState}
+        scannerStatus={scannerStatus}
         autoProgress={autoProgress}
         statusUi={statusUi}
       />
 
-      <DebugOverlay metrics={debugMetrics} detectionState={detectionState} />
+      <DebugOverlay metrics={debugMetrics} scannerStatus={scannerStatus} />
 
       <CameraControls
         captureMode={captureMode}
@@ -176,7 +201,7 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
         torchAvailable={torchAvailable}
         cameraState={cameraState}
         isTorchOn={isTorchOn}
-        onCapture={handleCapture}
+        onCapture={onCaptureCard}
         onToggleTorch={() => void toggleTorch()}
       />
 
@@ -185,10 +210,11 @@ export function IdCardScanner({ className = "", onBack }: IdCardScannerProps) {
         capturedImage={capturedImage}
         cameraState={cameraState}
         cameraError={cameraError}
-        onRetry={handleRetry}
+        customError={customError}
+        onRetry={onRetryCard}
         onRetryCamera={() => void retryCamera()}
-        onCopyImage={handleCopyImage}
+        onCopyImage={onCopyImage}
       />
     </section>
   );
-}
+};
