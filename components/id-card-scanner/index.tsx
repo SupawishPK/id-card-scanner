@@ -2,13 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIdCardScanner } from "./use-scanner";
-import { CameraControls, CameraHeader, CameraOverlay } from "./camera-views";
+import { CameraGuide, CameraHeader, CaptureButton } from "./camera-views";
 import { DebugOverlay, ValidationDialogs } from "./dialog-views";
 import {
   AUTO_CAPTURE_DURATION_MS,
-  AUTO_STABLE_STATUS,
-  STATUS_UI,
-  type ICaptureMode,
   type IValidationState,
 } from "./theme";
 
@@ -39,7 +36,6 @@ export type IIdCardScannerProps = {
 export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
-  const [captureMode, setCaptureMode] = useState<ICaptureMode>("auto");
   const [autoProgress, setAutoProgress] = useState<number>(0);
   const [validationState, setValidationState] = useState<IValidationState>("idle");
   const [customError, setCustomError] = useState<ICustomErrorDetails | null>(null);
@@ -49,11 +45,8 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     cameraError,
     scannerStatus,
     capturedImage,
-    torchAvailable,
-    isTorchOn,
     debugMetrics,
     capturePhoto,
-    toggleTorch,
     retryCapture,
     retryCamera,
   } = useIdCardScanner({ videoRef, roiRef: guideRef });
@@ -61,13 +54,9 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const isStable = scannerStatus === "stable";
   const canCapture = isStable && !capturedImage;
 
-  const statusUi =
-    autoProgress > 0 || (captureMode === "auto" && scannerStatus === "stable")
-      ? AUTO_STABLE_STATUS
-      : STATUS_UI[scannerStatus];
-
+  // Auto-capture when stable
   useEffect(() => {
-    if (captureMode !== "auto" || !canCapture) {
+    if (!canCapture) {
       setAutoProgress(0);
       return;
     }
@@ -103,7 +92,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
       cancelAnimationFrame(animFrameId);
       setAutoProgress(0);
     };
-  }, [canCapture, captureMode, capturePhoto]);
+  }, [canCapture, capturePhoto]);
 
   useEffect(() => {
     if (!capturedImage) {
@@ -172,7 +161,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   };
 
   return (
-    <section className="relative isolate h-dvh w-full overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10">
+    <section className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10">
       <video
         ref={videoRef}
         autoPlay muted playsInline disablePictureInPicture
@@ -180,29 +169,24 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         aria-label="ภาพสดจากกล้อง"
       />
 
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/70" />
+      <div className="pointer-events-none absolute inset-0 bg-black/30" />
 
       <CameraHeader onBack={onBack} />
 
-      <CameraOverlay
-        guideRef={guideRef}
-        scannerStatus={scannerStatus}
-        autoProgress={autoProgress}
-        statusUi={statusUi}
-      />
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-8 px-6 py-4">
+        <CameraGuide
+          guideRef={guideRef}
+          scannerStatus={scannerStatus}
+          autoProgress={autoProgress}
+        />
+      </div>
 
       <DebugOverlay metrics={debugMetrics} scannerStatus={scannerStatus} />
 
-      <CameraControls
-        captureMode={captureMode}
-        onModeChange={setCaptureMode}
+      <CaptureButton
         canCapture={canCapture}
         autoProgress={autoProgress}
-        torchAvailable={torchAvailable}
-        cameraState={cameraState}
-        isTorchOn={isTorchOn}
         onCapture={onCaptureCard}
-        onToggleTorch={() => void toggleTorch()}
       />
 
       <ValidationDialogs

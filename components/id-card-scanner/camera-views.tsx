@@ -1,51 +1,63 @@
 "use client";
 
 import type { RefObject } from "react";
-import type { IScannerStatus } from "./use-scanner";
+import type { IScannerStatus } from "./geometry";
 import { ID_CARD_ASPECT_RATIO } from "./config";
 import { CardGuideCanvas } from "./guide-canvas";
-import {
-  BACK_ARROW_ICON,
-  CAMERA_ICON,
-  FLASH_OFF_ICON,
-  FLASH_ON_ICON,
-  type ICaptureMode,
-  type IStatusUi,
-} from "./theme";
+
+const BACK_ARROW_ICON = (
+  <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+  </svg>
+);
+
+const CAMERA_ICON = (
+  <svg className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13" r="4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 export type ICameraHeaderProps = {
   onBack: () => void;
 };
 
 export const CameraHeader = ({ onBack }: ICameraHeaderProps) => (
-  <header className="relative z-10 flex items-center justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))]">
+  <header className="relative z-10 flex items-center justify-center px-5 pt-[max(1rem,env(safe-area-inset-top))]">
     <button
       type="button"
       onClick={onBack}
-      className="grid size-11 place-items-center rounded-full bg-slate-900/60 text-white shadow-lg backdrop-blur-md transition-all hover:bg-slate-900/80 active:scale-95"
+      className="absolute left-5 grid size-10 place-items-center text-white transition-opacity active:opacity-60"
       aria-label="ย้อนกลับ"
     >
       {BACK_ARROW_ICON}
     </button>
+    <h1 className="text-base font-semibold text-white">ถ่ายรูปบัตรประชาชน</h1>
   </header>
 );
 
-export type ICameraOverlayProps = {
+export type ICameraGuideProps = {
   guideRef: RefObject<HTMLCanvasElement | null>;
   scannerStatus: IScannerStatus;
   autoProgress: number;
-  statusUi: IStatusUi;
 };
 
-export const CameraOverlay = ({
+export const CameraGuide = ({
   guideRef,
   scannerStatus,
   autoProgress,
-  statusUi,
-}: ICameraOverlayProps) => (
-  <div className="relative z-10 my-auto flex flex-col items-center justify-center px-6">
+}: ICameraGuideProps) => (
+  <div className="relative z-10 flex flex-col items-center gap-6 px-6">
+    <div className="w-full max-w-sm rounded-xl bg-black/50 px-5 py-3 text-center backdrop-blur-sm">
+      <p className="text-sm leading-6 text-white">
+        กรุณาถ่ายรูปประชาชนด้านหน้า
+        <br />
+        โดยวางบัตรให้ตรงตามกรอบ
+      </p>
+    </div>
+
     <div
-      className="relative w-full max-w-sm rounded-2xl"
+      className="relative w-full max-w-sm"
       style={{ aspectRatio: ID_CARD_ASPECT_RATIO }}
     >
       <CardGuideCanvas
@@ -54,101 +66,30 @@ export const CameraOverlay = ({
         autoProgress={autoProgress}
       />
     </div>
-
-    <div
-      className="mt-6 flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-xs font-medium text-white shadow-xl backdrop-blur-md"
-      role="status"
-      aria-live="polite"
-    >
-      <span
-        className={`size-2 rounded-full transition-colors ${statusUi.dotColor}`}
-        aria-hidden="true"
-      />
-      <span>{statusUi.label}</span>
-    </div>
   </div>
 );
 
-export type ICameraControlsProps = {
-  captureMode: ICaptureMode;
-  onModeChange: (mode: ICaptureMode) => void;
+export type ICaptureButtonProps = {
   canCapture: boolean;
   autoProgress: number;
-  torchAvailable: boolean;
-  cameraState: string;
-  isTorchOn: boolean;
   onCapture: () => void;
-  onToggleTorch: () => void;
 };
 
-export const CameraControls = ({
-  captureMode,
-  onModeChange,
+export const CaptureButton = ({
   canCapture,
   autoProgress,
-  torchAvailable,
-  cameraState,
-  isTorchOn,
   onCapture,
-  onToggleTorch,
-}: ICameraControlsProps) => (
-  <footer className="relative z-10 flex flex-col items-center gap-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-2">
-    <div className="flex items-center gap-1 rounded-full bg-slate-900/60 p-1 backdrop-blur-md">
-      <button
-        type="button"
-        onClick={() => onModeChange("auto")}
-        className={`rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
-          captureMode === "auto"
-            ? "bg-white text-slate-950 shadow-sm"
-            : "text-slate-300 hover:text-white"
-        }`}
-      >
-        อัตโนมัติ
-      </button>
-      <button
-        type="button"
-        onClick={() => onModeChange("manual")}
-        className={`rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
-          captureMode === "manual"
-            ? "bg-white text-slate-950 shadow-sm"
-            : "text-slate-300 hover:text-white"
-        }`}
-      >
-        กดถ่ายเอง
-      </button>
-    </div>
-
-    <div className="flex w-full items-center justify-around px-8">
-      <div className="size-12" />
-
-      <button
-        type="button"
-        onClick={onCapture}
-        disabled={!canCapture || autoProgress > 0}
-        className="group relative grid size-20 place-items-center rounded-full bg-white/20 p-1.5 transition-transform active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-        aria-label="ถ่ายภาพบัตร"
-      >
-        <div className="grid size-full place-items-center rounded-full bg-white text-slate-950 shadow-2xl transition-transform group-hover:scale-105">
-          {CAMERA_ICON}
-        </div>
-      </button>
-
-      {torchAvailable && cameraState === "ready" ? (
-        <button
-          type="button"
-          onClick={onToggleTorch}
-          className={`grid size-12 place-items-center rounded-full text-white backdrop-blur-md transition-all active:scale-95 ${
-            isTorchOn
-              ? "bg-amber-400 text-slate-950 shadow-lg"
-              : "bg-slate-900/60 hover:bg-slate-900/80"
-          }`}
-          aria-label={isTorchOn ? "ปิดแฟลช" : "เปิดแฟลช"}
-        >
-          {isTorchOn ? FLASH_ON_ICON : FLASH_OFF_ICON}
-        </button>
-      ) : (
-        <div className="size-12" />
-      )}
-    </div>
-  </footer>
+}: ICaptureButtonProps) => (
+  <div className="relative z-10 flex flex-col items-center gap-2 pb-[max(2rem,env(safe-area-inset-bottom))]">
+    <button
+      type="button"
+      onClick={onCapture}
+      disabled={!canCapture || autoProgress > 0}
+      className="grid size-16 place-items-center rounded-full border-2 border-white/60 bg-white/10 text-white backdrop-blur-sm transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+      aria-label="ถ่ายภาพบัตร"
+    >
+      {CAMERA_ICON}
+    </button>
+    <span className="text-sm text-white/80">ถ่ายรูป</span>
+  </div>
 );
