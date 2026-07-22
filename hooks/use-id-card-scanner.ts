@@ -42,8 +42,6 @@ export type ScannerOptions = {
   stableFrames?: number;
   /** ระยะเวลาขั้นต่ำ (ms) ที่ต้องการให้นิ่ง */
   minimumStableMs?: number;
-  /** คุณภาพไฟล์ภาพ JPEG (0.0 - 1.0) */
-  jpegQuality?: number;
   /** สามารถส่งค่า Config เพื่อปรับแต่งความแม่นยำ/ความเร็วในการสแกนได้เพิ่มเติม */
   config?: ScannerConfig;
 };
@@ -53,7 +51,6 @@ export function useIdCardScanner({
   roiRef,
   stableFrames = DEFAULT_SCANNER_CONFIG.stableFrames,
   minimumStableMs = DEFAULT_SCANNER_CONFIG.minimumStableMs,
-  jpegQuality = DEFAULT_SCANNER_CONFIG.jpegQuality,
   config: customConfig,
 }: ScannerOptions) {
   // 1. Unified Configuration
@@ -65,10 +62,9 @@ export function useIdCardScanner({
       ...DEFAULT_SCANNER_CONFIG,
       stableFrames,
       minimumStableMs,
-      jpegQuality,
       ...(customConfigRef.current ?? {}),
     }),
-    [jpegQuality, minimumStableMs, stableFrames],
+    [minimumStableMs, stableFrames],
   );
 
   // 2. Public UI States
@@ -160,13 +156,13 @@ export function useIdCardScanner({
       sh: Math.min(video.videoHeight - fs.sourceRect.sy + padH, fs.sourceRect.sh + padH * 2),
     };
 
-    const dataUrl = captureRoiImage(video, paddedRect, config.jpegQuality);
+    const dataUrl = captureRoiImage(video, paddedRect);
     if (!dataUrl) return false;
 
     capturedRef.current = true;
     setCapturedImage(dataUrl);
     return true;
-  }, [config.jpegQuality, videoRef]);
+  }, [videoRef]);
 
   const toggleTorch = useCallback(async () => {
     const stream = streamRef.current;

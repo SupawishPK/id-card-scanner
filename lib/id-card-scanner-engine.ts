@@ -172,7 +172,6 @@ export function expandSourceRect(
 export function captureRoiImage(
   video: HTMLVideoElement,
   rect: SourceRect,
-  quality: number,
 ): string | null {
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(rect.sw);
@@ -192,7 +191,7 @@ export function captureRoiImage(
     canvas.height,
   );
 
-  // Use PNG for lossless capture — zero compression artifacts, sharp as native camera
+  // PNG for lossless capture — zero compression artifacts
   const dataUrl = canvas.toDataURL("image/png");
   context.clearRect(0, 0, canvas.width, canvas.height);
   return dataUrl;
