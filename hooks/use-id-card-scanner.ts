@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import {
+  CARD_DETECTION_CONFIG,
   DEFAULT_SCANNER_CONFIG,
   type ScannerConfig,
 } from "@/lib/id-card-scanner-config";
@@ -148,7 +149,18 @@ export function useIdCardScanner({
     const fs = frameStateRef.current;
     if (!video || !fs.sourceRect || capturedRef.current || !fs.readiness.isReady) return false;
 
-    const dataUrl = captureRoiImage(video, fs.sourceRect, config.jpegQuality);
+    // Expand capture rect by 5% on each side for breathing room, clamped to video bounds
+    const pad = CARD_DETECTION_CONFIG.capturePaddingRatio;
+    const padW = fs.sourceRect.sw * pad;
+    const padH = fs.sourceRect.sh * pad;
+    const paddedRect: SourceRect = {
+      sx: Math.max(0, fs.sourceRect.sx - padW),
+      sy: Math.max(0, fs.sourceRect.sy - padH),
+      sw: Math.min(video.videoWidth - fs.sourceRect.sx + padW, fs.sourceRect.sw + padW * 2),
+      sh: Math.min(video.videoHeight - fs.sourceRect.sy + padH, fs.sourceRect.sh + padH * 2),
+    };
+
+    const dataUrl = captureRoiImage(video, paddedRect, config.jpegQuality);
     if (!dataUrl) return false;
 
     capturedRef.current = true;

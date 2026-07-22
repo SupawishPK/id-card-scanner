@@ -6,6 +6,8 @@ export const ID_CARD_ASPECT_RATIO = 85.6 / 53.98;
 export const CARD_DETECTION_CONFIG = {
   // Background padding keeps edges measurable when the card matches the guide.
   analysisPaddingRatio: 0.08,
+  /** Extra padding around the guide frame when capturing the final image (5%) */
+  capturePaddingRatio: 0.05,
   presenceConfidence: { enter: 0.54, exit: 0.44 },
   captureConfidence: { enter: 0.56, exit: 0.46 },
 } as const;

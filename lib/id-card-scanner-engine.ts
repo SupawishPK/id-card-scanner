@@ -56,8 +56,8 @@ export async function requestCamera(): Promise<MediaStream> {
       audio: false,
       video: {
         facingMode: { exact: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
     });
   } catch (error) {
@@ -67,8 +67,8 @@ export async function requestCamera(): Promise<MediaStream> {
       audio: false,
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
     });
   }
@@ -192,7 +192,8 @@ export function captureRoiImage(
     canvas.height,
   );
 
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  // Use PNG for lossless capture — zero compression artifacts, sharp as native camera
+  const dataUrl = canvas.toDataURL("image/png");
   context.clearRect(0, 0, canvas.width, canvas.height);
   return dataUrl;
 }
