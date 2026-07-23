@@ -1,4 +1,6 @@
-export const ID_CARD_ASPECT_RATIO = 85.6 / 53.98;
+export const ID_CARD_WIDTH_MM = 85.60;
+export const ID_CARD_HEIGHT_MM = 53.98;
+export const ID_CARD_ASPECT_RATIO = ID_CARD_WIDTH_MM / ID_CARD_HEIGHT_MM; // Exact ISO 7810 ID-1 ratio (~1.58577)
 
 export const SCANNER_CONFIG = {
   stableFrames: 4,
@@ -35,7 +37,7 @@ export const EDGE_DETECTION = {
 export const GEOMETRY_RULES = {
   minEdgeScore: 0.36,
   minCornerScore: 0.10,
-  minAspectScore: 0.40,
+  minAspectScore: 0.50, // Strict ISO 7810 ID-1 aspect ratio verification
   minSpanCoverage: 0.78,
   maxSpanCoverage: 1.10,
   outerTolerance: 0.035,

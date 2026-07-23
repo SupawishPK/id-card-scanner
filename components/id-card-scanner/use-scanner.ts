@@ -252,7 +252,6 @@ export const useIdCardScanner = ({ videoRef, roiRef }: IScannerOptions) => {
     capturedRef.current = false;
     resetState();
     setCapturedImage(null);
-    setScannerStatus("searching");
     startDetectionLoop();
   }, [resetState, startDetectionLoop]);
 

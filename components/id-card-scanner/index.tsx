@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useIdCardScanner } from "./use-scanner";
 import { CameraHeader, CameraOverlay } from "./camera-views";
 import { DebugOverlay, ValidationDialogs } from "./dialog-views";
@@ -8,7 +9,6 @@ import {
   AUTO_CAPTURE_DURATION_MS,
   AUTO_STABLE_STATUS,
   STATUS_UI,
-  type IValidationState,
 } from "./theme";
 
 const vibrate = (pattern: number | number[]) => {
@@ -36,11 +36,12 @@ export type IIdCardScannerProps = {
 };
 
 export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
+  const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [autoProgress, setAutoProgress] = useState<number>(0);
-  const [validationState, setValidationState] = useState<IValidationState>("idle");
-  const [customError, setCustomError] = useState<ICustomErrorDetails | null>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -54,11 +55,12 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   } = useIdCardScanner({ videoRef, roiRef: guideRef });
 
   const isStable = scannerStatus === "stable";
-  const canCapture = isStable && !capturedImage;
+  const canCapture = isStable && !capturedImage && !isVerifying && !isSuccessVerified;
 
-  const statusUi =
-    autoProgress > 0 || scannerStatus === "stable"
-      ? AUTO_STABLE_STATUS
+  const statusUi = isSuccessVerified
+    ? { label: "ตรวจสอบข้อมูลสำเร็จ", dotColor: "bg-emerald-400" }
+    : isVerifying || autoProgress > 0 || scannerStatus === "stable"
+      ? { label: isVerifying ? "กำลังตรวจสอบข้อมูล…" : "กำลังบันทึกภาพ…", dotColor: "bg-rose-500" }
       : STATUS_UI[scannerStatus];
 
   // Auto-capture when stable
@@ -89,8 +91,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
       } else {
         setAutoProgress(0);
         vibrate([60, 40, 80]);
-        const success = capturePhoto();
-        if (success) setValidationState("checking");
+        capturePhoto();
       }
     };
 
@@ -101,66 +102,55 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     };
   }, [canCapture, capturePhoto]);
 
+  const verifyingImageRef = useRef<string | null>(null);
+
+  // Secret background verification effect
   useEffect(() => {
-    if (!capturedImage) {
-      setCustomError(null);
+    if (!capturedImage || verifyingImageRef.current === capturedImage || isSuccessVerified) {
       return;
     }
 
-    let isCurrent = true;
-    setValidationState("checking");
-    setCustomError(null);
+    verifyingImageRef.current = capturedImage;
+    setIsVerifying(true);
+    console.log("[Scanner] 📸 ID Card photo captured. Secretly verifying data with API in background...");
+
+    let canceled = false;
 
     const runVerification = async () => {
       try {
         const res = await onVerify(capturedImage);
-        if (!isCurrent) return;
+        if (canceled) return;
 
-        if (res && typeof res === "object" && "success" in res) {
-          if (res.success) {
-            setValidationState("success");
-          } else {
-            setCustomError(res.error || null);
-            setValidationState("error");
-          }
+        if (res && typeof res === "object" && "success" in res && !res.success) {
+          console.log("[Scanner] ⚠️ Verification failed silently. Resetting scanner for next scan...");
+          verifyingImageRef.current = null;
+          setIsVerifying(false);
+          retryCapture();
         } else {
-          setValidationState("success");
+          console.log("[Scanner] ✅ Verification successful! Saving verified image to sessionStorage...");
+          sessionStorage.setItem("captured_id_card", capturedImage);
+          setIsVerifying(false);
+          setIsSuccessVerified(true);
+          vibrate([60, 40, 80]);
+          setTimeout(() => {
+            router.push("/preview");
+          }, 150);
         }
-      } catch (err: unknown) {
-        if (!isCurrent) return;
-        const errorObj = err as Record<string, string | undefined>;
-        setCustomError({
-          title: errorObj?.title,
-          description: errorObj?.message || errorObj?.description,
-          hint: errorObj?.hint,
-        });
-        setValidationState("error");
+      } catch (err) {
+        if (canceled) return;
+        console.log("[Scanner] ❌ Verification threw error silently:", err);
+        verifyingImageRef.current = null;
+        setIsVerifying(false);
+        retryCapture();
       }
     };
 
     void runVerification();
 
     return () => {
-      isCurrent = false;
+      canceled = true;
     };
-  }, [capturedImage, onVerify]);
-
-  const onRetryCard = () => {
-    setCustomError(null);
-    setValidationState("idle");
-    retryCapture();
-  };
-
-  const onCopyImage = async () => {
-    if (!capturedImage) return;
-    try {
-      const response = await fetch(capturedImage);
-      const blob = await response.blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-    } catch {
-      window.open(capturedImage, "_blank");
-    }
-  };
+  }, [capturedImage, onVerify, isSuccessVerified, retryCapture, router]);
 
   return (
     <section className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10">
@@ -180,6 +170,9 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         scannerStatus={scannerStatus}
         autoProgress={autoProgress}
         statusUi={statusUi}
+        isSuccessVerified={isSuccessVerified}
+        isVerifying={isVerifying}
+        detectedAspect={debugMetrics?.detectedAspect}
       />
 
       <DebugOverlay metrics={debugMetrics} scannerStatus={scannerStatus} />
@@ -187,14 +180,9 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
       <div className="relative z-10 pb-[max(2rem,env(safe-area-inset-bottom))]" />
 
       <ValidationDialogs
-        validationState={validationState}
-        capturedImage={capturedImage}
         cameraState={cameraState}
         cameraError={cameraError}
-        customError={customError}
-        onRetry={onRetryCard}
         onRetryCamera={() => void retryCamera()}
-        onCopyImage={onCopyImage}
       />
     </section>
   );

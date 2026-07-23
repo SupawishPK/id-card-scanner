@@ -26,3 +26,15 @@ button { -webkit-tap-highlight-color: transparent; }
     animation-iteration-count: 1 !important;
   }
 }
+@keyframes progress-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-progress-shimmer {
+  animation: progress-shimmer 1s infinite linear;
+}

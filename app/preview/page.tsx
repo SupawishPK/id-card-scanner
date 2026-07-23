@@ -16,26 +16,46 @@ const PreviewPage = () => {
     setImageUrl(stored);
   }, [router]);
 
+  const [copiedPng, setCopiedPng] = useState(false);
+  const [copiedBase64, setCopiedBase64] = useState(false);
+
   const onBack = () => {
     sessionStorage.removeItem("captured_id_card");
     router.push("/");
   };
 
-  const onCopy = async () => {
+  const onCopyPng = async () => {
     if (!imageUrl) return;
-    const img = new Image();
-    img.src = imageUrl;
-    await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext("2d")?.drawImage(img, 0, 0);
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    }, "image/png");
+    try {
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+      setCopiedPng(true);
+      setTimeout(() => setCopiedPng(false), 2000);
+    } catch {
+      window.open(imageUrl, "_blank");
+    }
   };
 
+  const onCopyBase64 = async () => {
+    if (!imageUrl) return;
+    try {
+      await navigator.clipboard.writeText(imageUrl);
+      setCopiedBase64(true);
+      setTimeout(() => setCopiedBase64(false), 2000);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = imageUrl;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopiedBase64(true);
+      setTimeout(() => setCopiedBase64(false), 2000);
+    }
+  };
 
   if (!imageUrl) {
     return (
@@ -86,16 +106,51 @@ const PreviewPage = () => {
 
         {/* Actions */}
         <div className="flex flex-col gap-3 px-5 pb-[max(2rem,env(safe-area-inset-bottom))]">
-          <button
-            type="button"
-            onClick={onCopy}
-            className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium hover:bg-white/10 active:scale-[.98] transition-all"
-          >
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            คัดลอกรูป (PNG)
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onCopyPng}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium hover:bg-white/10 active:scale-[.98] transition-all"
+            >
+              {copiedPng ? (
+                <>
+                  <svg className="size-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-emerald-400 font-semibold truncate">คัดลอก PNG แล้ว</span>
+                </>
+              ) : (
+                <>
+                  <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>คัดลอกรูป (PNG)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={onCopyBase64}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium hover:bg-white/10 active:scale-[.98] transition-all"
+            >
+              {copiedBase64 ? (
+                <>
+                  <svg className="size-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-emerald-400 font-semibold truncate">คัดลอก Base64 แล้ว</span>
+                </>
+              ) : (
+                <>
+                  <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>คัดลอก Base64</span>
+                </>
+              )}
+            </button>
+          </div>
 
           <button
             type="button"

@@ -14,25 +14,25 @@ export type IStatusUi = {
 export const STATUS_UI: Record<IScannerStatus, IStatusUi> = {
   searching: {
     label: "วางบัตรประชาชนให้ตรงในกรอบ",
-    dotColor: "bg-slate-400",
+    dotColor: "bg-white/70",
   },
   detected: {
     label: "ตรวจพบบัตรแล้ว กรุณาขยับให้ตรงกรอบ",
-    dotColor: "bg-amber-400 animate-pulse",
+    dotColor: "bg-rose-500",
   },
   aligning: {
     label: "บัตรตรงกรอบแล้ว ถือนิ่งๆ สักครู่",
-    dotColor: "bg-rose-400 animate-pulse",
+    dotColor: "bg-rose-500",
   },
   stable: {
     label: "ถือนิ่งๆ กำลังบันทึกภาพ…",
-    dotColor: "bg-emerald-400 animate-ping",
+    dotColor: "bg-rose-500",
   },
 };
 
 export const AUTO_STABLE_STATUS: IStatusUi = {
   label: "กำลังบันทึกภาพอัตโนมัติ…",
-  dotColor: "bg-emerald-400 animate-ping",
+  dotColor: "bg-rose-500",
 };
 
 export const AUTO_CAPTURE_DURATION_MS = 600;

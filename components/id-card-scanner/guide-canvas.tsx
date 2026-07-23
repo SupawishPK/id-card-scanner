@@ -38,22 +38,26 @@ const getCompiledOuterPath = (): Path2D | null => {
 };
 
 const FRAME_COLOR: Record<IScannerStatus, string> = {
-  searching: "rgba(255, 255, 255, 0.85)",
-  detected: "rgba(251, 191, 36, 0.9)",
-  aligning: "rgba(244, 63, 94, 0.9)",
-  stable: "rgba(52, 211, 153, 0.35)",
+  searching: "rgba(255, 255, 255, 0.8)",
+  detected: "rgba(239, 68, 68, 1)",
+  aligning: "rgba(239, 68, 68, 1)",
+  stable: "rgba(239, 68, 68, 1)",
 };
 
 type ICardGuideCanvasProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   scannerStatus: IScannerStatus;
   autoProgress?: number;
+  isSuccessVerified?: boolean;
+  isVerifying?: boolean;
 };
 
 export const CardGuideCanvas = ({
   canvasRef,
   scannerStatus,
   autoProgress = 0,
+  isSuccessVerified = false,
+  isVerifying = false,
 }: ICardGuideCanvasProps) => {
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -80,32 +84,26 @@ export const CardGuideCanvas = ({
       context.clearRect(0, 0, width, height);
       context.save();
       context.scale(width / FRAME_VIEWBOX_WIDTH, height / FRAME_VIEWBOX_HEIGHT);
-      context.fillStyle = FRAME_COLOR[scannerStatus];
+      context.fillStyle = isSuccessVerified
+        ? "rgba(16, 185, 129, 1)"
+        : FRAME_COLOR[scannerStatus];
       for (const path of compiledPaths) {
         context.fill(path);
       }
 
-      if (autoProgress > 0) {
-        const outerPath = getCompiledOuterPath();
-        if (outerPath) {
-          const totalPerimeter = 1012;
-          const progressLength =
-            Math.min(1, Math.max(0, autoProgress)) * totalPerimeter;
+      const outerPath = getCompiledOuterPath();
+      if (outerPath) {
+        const strokeColor = isSuccessVerified
+          ? "rgba(16, 185, 129, 1)"
+          : scannerStatus !== "searching"
+            ? "rgba(239, 68, 68, 1)"
+            : "rgba(255, 255, 255, 0.8)";
 
-          context.strokeStyle = "rgba(52, 211, 153, 0.85)";
-          context.lineWidth = 3.5;
-          context.lineCap = "round";
-          context.shadowColor = "rgba(52, 211, 153, 0.5)";
-          context.shadowBlur = 8;
-          context.setLineDash([progressLength, totalPerimeter]);
-          context.stroke(outerPath);
-
-          context.strokeStyle = "rgba(209, 250, 229, 0.9)";
-          context.lineWidth = 1.8;
-          context.shadowBlur = 0;
-          context.setLineDash([progressLength, totalPerimeter]);
-          context.stroke(outerPath);
-        }
+        context.strokeStyle = strokeColor;
+        context.lineWidth = 1;
+        context.lineCap = "round";
+        context.shadowBlur = 0;
+        context.stroke(outerPath);
       }
 
       context.restore();
@@ -116,18 +114,16 @@ export const CardGuideCanvas = ({
     if (typeof ResizeObserver !== "undefined") {
       const resizeObserver = new ResizeObserver(drawGuide);
       resizeObserver.observe(canvas);
-      return () => resizeObserver.disconnect();
+      return () => {
+        resizeObserver.disconnect();
+      };
     }
-  }, [autoProgress, canvasRef, scannerStatus]);
+  }, [canvasRef, isSuccessVerified, isVerifying, scannerStatus]);
 
   return (
     <canvas
       ref={canvasRef}
-      className={`pointer-events-none absolute inset-0 size-full rounded-xl transition-[box-shadow,background-color] duration-200 ${
-        scannerStatus === "stable"
-          ? "bg-emerald-400/5 shadow-[0_0_0_9999px_rgba(2,6,23,0.42),0_0_14px_rgba(52,211,153,0.35)]"
-          : "bg-transparent shadow-[0_0_0_9999px_rgba(2,6,23,0.5)]"
-      }`}
+      className="pointer-events-none absolute inset-0 size-full rounded-xl bg-transparent shadow-[0_0_0_9999px_rgba(2,6,23,0.5)] transition-colors duration-300"
       aria-hidden="true"
     />
   );

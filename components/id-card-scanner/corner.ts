@@ -1,5 +1,10 @@
 import { CORNER_RADIUS_RATIO, EDGE_LUMA_DELTA_THRESHOLD } from "./config";
-import { alignDown, alignUp, type ICardEdges, type ICornerScores } from "./edge";
+import {
+  alignDown,
+  alignUp,
+  type ICardEdges,
+  type ICornerScores,
+} from "./edge";
 
 export type IMeasureCornerParams = {
   luma: Uint8Array;
@@ -85,10 +90,38 @@ export const measureAllCornersScores = ({
 }: IScorerGridParams): ICornerScores => {
   const { top, right, bottom, left } = edges;
   return {
-    topLeft: measureCornerScore({ luma, width, height, centerXRatio: left.position, centerYRatio: top.position, step }),
-    topRight: measureCornerScore({ luma, width, height, centerXRatio: right.position, centerYRatio: top.position, step }),
-    bottomRight: measureCornerScore({ luma, width, height, centerXRatio: right.position, centerYRatio: bottom.position, step }),
-    bottomLeft: measureCornerScore({ luma, width, height, centerXRatio: left.position, centerYRatio: top.position, step }),
+    topLeft: measureCornerScore({
+      luma,
+      width,
+      height,
+      centerXRatio: left.position,
+      centerYRatio: top.position,
+      step,
+    }),
+    topRight: measureCornerScore({
+      luma,
+      width,
+      height,
+      centerXRatio: right.position,
+      centerYRatio: top.position,
+      step,
+    }),
+    bottomRight: measureCornerScore({
+      luma,
+      width,
+      height,
+      centerXRatio: right.position,
+      centerYRatio: bottom.position,
+      step,
+    }),
+    bottomLeft: measureCornerScore({
+      luma,
+      width,
+      height,
+      centerXRatio: left.position,
+      centerYRatio: top.position,
+      step,
+    }),
   };
 };
 
