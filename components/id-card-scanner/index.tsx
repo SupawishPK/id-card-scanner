@@ -132,11 +132,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
       <div className="pointer-events-none absolute inset-0 bg-black/30" />
 
-      <CameraHeader
-        onBack={onBack}
-        showDebug={showDebug}
-        onToggleDebug={() => setShowDebug((prev) => !prev)}
-      />
+      <CameraHeader onBack={onBack} />
 
       <CameraOverlay
         guideRef={guideRef}
@@ -147,6 +143,8 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         isVerifying={isVerifying}
         detectedAspect={debugMetrics?.detectedAspect}
         showDebug={showDebug}
+        onToggleDebug={() => setShowDebug((prev) => !prev)}
+        metrics={debugMetrics}
       />
 
       <DebugOverlay

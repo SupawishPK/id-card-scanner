@@ -5,76 +5,12 @@ import { ID_CARD_ASPECT_RATIO } from "./config";
 import { COPY_ICON, type IValidationState } from "./theme";
 
 export type IDebugOverlayProps = {
-  metrics: IDebugMetrics | null;
-  scannerStatus: IScannerStatus;
+  metrics?: IDebugMetrics | null;
+  scannerStatus?: IScannerStatus;
   showDebug?: boolean;
 };
 
-export const DebugOverlay = ({
-  metrics,
-  scannerStatus,
-  showDebug = false,
-}: IDebugOverlayProps) => {
-  if (!metrics || !showDebug) return null;
-
-  const buildText = () => {
-    const f = (v: number | null | undefined, d = 3) =>
-      v == null ? "null" : v.toFixed(d);
-    const yn = (v: boolean | null | undefined) => (v ? "Y" : "N");
-
-    return [
-      `status=${scannerStatus}`,
-      ``,
-      `--- Frame ---`,
-      `mean=${f(metrics.mean, 1)}`,
-      `variance=${f(metrics.variance, 1)}`,
-      `motion=${metrics.motion < 0 ? "null" : f(metrics.motion, 2)}`,
-      `edgeDensity=${f(metrics.edgeDensity, 4)}`,
-      `usableLight=${yn(metrics.hasUsableLight)}`,
-      `cardDetails=${yn(metrics.hasCardDetails)}`,
-      `presenceDetails=${yn(metrics.hasPresenceDetails)}`,
-      ``,
-      `--- Confidence ---`,
-      `presenceConf=${f(metrics.presenceConfidence)}`,
-      `alignmentConf=${f(metrics.alignmentConfidence)}`,
-      `coverageScore=${f(metrics.coverageScore)}`,
-      `aspectScore=${f(metrics.aspectScore)}`,
-      `skewScore=${f(metrics.skewScore)}`,
-      `parallelismScore=${f(metrics.parallelismScore)}`,
-      `minEdge=${f(metrics.minEdgeScore)}`,
-      `minCorner=${f(metrics.minCornerScore)}`,
-      `avgEdge=${f(metrics.avgEdgeScore)}`,
-      `avgCorner=${f(metrics.avgCornerScore)}`,
-      `bgContrast=${f(metrics.interiorBgContrast, 1)}`,
-      `meetsMinGeom=${yn(metrics.meetsMinimumGeometry)}`,
-    ].join("\n");
-  };
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(buildText());
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = buildText();
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onCopy}
-      className="absolute right-3 top-3 z-20 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white/80 backdrop-blur-sm hover:bg-white/20 active:scale-95"
-    >
-      📋 Copy Debug
-    </button>
-  );
-};
+export const DebugOverlay = (_props: IDebugOverlayProps) => null;
 
 export type IValidationDialogsProps = {
   cameraState: string;
