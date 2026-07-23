@@ -42,6 +42,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const [autoProgress, setAutoProgress] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
 
   const {
     cameraState,
@@ -131,7 +132,11 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
       <div className="pointer-events-none absolute inset-0 bg-black/30" />
 
-      <CameraHeader onBack={onBack} />
+      <CameraHeader
+        onBack={onBack}
+        showDebug={showDebug}
+        onToggleDebug={() => setShowDebug((prev) => !prev)}
+      />
 
       <CameraOverlay
         guideRef={guideRef}
@@ -141,9 +146,14 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         isSuccessVerified={isSuccessVerified}
         isVerifying={isVerifying}
         detectedAspect={debugMetrics?.detectedAspect}
+        showDebug={showDebug}
       />
 
-      <DebugOverlay metrics={debugMetrics} scannerStatus={scannerStatus} />
+      <DebugOverlay
+        metrics={debugMetrics}
+        scannerStatus={scannerStatus}
+        showDebug={showDebug}
+      />
 
       <div className="relative z-10 pb-[max(2rem,env(safe-area-inset-bottom))]" />
 

@@ -7,13 +7,15 @@ import { COPY_ICON, type IValidationState } from "./theme";
 export type IDebugOverlayProps = {
   metrics: IDebugMetrics | null;
   scannerStatus: IScannerStatus;
+  showDebug?: boolean;
 };
 
 export const DebugOverlay = ({
   metrics,
   scannerStatus,
+  showDebug = false,
 }: IDebugOverlayProps) => {
-  if (!metrics) return null;
+  if (!metrics || !showDebug) return null;
 
   const buildText = () => {
     const f = (v: number | null | undefined, d = 3) =>

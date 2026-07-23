@@ -14,19 +14,40 @@ const BACK_ARROW_ICON = (
 
 export type ICameraHeaderProps = {
   onBack: () => void;
+  showDebug?: boolean;
+  onToggleDebug?: () => void;
 };
 
-export const CameraHeader = ({ onBack }: ICameraHeaderProps) => (
-  <header className="relative z-10 flex items-center justify-center px-5 pt-[max(1rem,env(safe-area-inset-top))]">
+export const CameraHeader = ({
+  onBack,
+  showDebug = false,
+  onToggleDebug,
+}: ICameraHeaderProps) => (
+  <header className="relative z-10 flex items-center justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))]">
     <button
       type="button"
       onClick={onBack}
-      className="absolute left-4 grid size-10 place-items-center text-white transition-opacity active:opacity-60"
+      className="grid size-10 place-items-center text-white transition-opacity active:opacity-60"
       aria-label="ย้อนกลับ"
     >
       {BACK_ARROW_ICON}
     </button>
     <h1 className="text-base font-semibold text-white">ถ่ายรูปบัตรประชาชน</h1>
+    <button
+      type="button"
+      onClick={onToggleDebug}
+      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-mono transition-all active:scale-95 ${
+        showDebug
+          ? "border border-amber-400/50 bg-amber-500/20 text-amber-300"
+          : "border border-white/15 bg-white/10 text-white/70 hover:bg-white/20"
+      }`}
+      aria-label="ซ่อน/แสดง Debug Info"
+    >
+      <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+      </svg>
+      <span>Debug</span>
+    </button>
   </header>
 );
 
@@ -38,6 +59,7 @@ export type ICameraOverlayProps = {
   isSuccessVerified?: boolean;
   isVerifying?: boolean;
   detectedAspect?: number;
+  showDebug?: boolean;
 };
 
 export const CameraOverlay = ({
@@ -48,6 +70,7 @@ export const CameraOverlay = ({
   isSuccessVerified,
   isVerifying,
   detectedAspect,
+  showDebug = false,
 }: ICameraOverlayProps) => (
   <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-5 px-6">
     <div className="w-full max-w-sm rounded-2xl bg-black/45 px-5 py-4 text-center backdrop-blur-sm">
@@ -89,74 +112,76 @@ export const CameraOverlay = ({
         ) : null}
       </div>
 
-      {/* Text Debug Box */}
-      <div className="flex w-full flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/75 p-3.5 text-xs font-mono text-slate-300 shadow-xl backdrop-blur-md">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Detect Status:</span>
-          <span className="font-semibold text-white uppercase">{scannerStatus}</span>
-        </div>
+      {/* Debug Info Panel - render only when showDebug is true */}
+      {showDebug ? (
+        <div className="flex w-full flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/75 p-3.5 text-xs font-mono text-slate-300 shadow-xl backdrop-blur-md transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Detect Status:</span>
+            <span className="font-semibold text-white uppercase">{scannerStatus}</span>
+          </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Progress:</span>
-          <div className="flex items-center gap-2">
-            <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
-              {isVerifying ? (
-                <div className="absolute inset-0 size-full bg-rose-950/80">
-                  <div className="size-full bg-gradient-to-r from-transparent via-rose-400 to-transparent animate-progress-shimmer" />
-                </div>
-              ) : (
-                <div
-                  className={`h-full transition-all duration-75 ${
-                    isSuccessVerified
-                      ? "bg-emerald-400"
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Progress:</span>
+            <div className="flex items-center gap-2">
+              <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
+                {isVerifying ? (
+                  <div className="absolute inset-0 size-full bg-rose-950/80">
+                    <div className="size-full bg-gradient-to-r from-transparent via-rose-400 to-transparent animate-progress-shimmer" />
+                  </div>
+                ) : (
+                  <div
+                    className={`h-full transition-all duration-75 ${
+                      isSuccessVerified
+                        ? "bg-emerald-400"
+                        : scannerStatus !== "searching"
+                          ? "bg-rose-500 w-full"
+                          : "w-0"
+                    }`}
+                  />
+                )}
+              </div>
+              <span
+                className={`w-9 text-right font-semibold ${
+                  isSuccessVerified
+                    ? "text-emerald-400"
+                    : isVerifying
+                      ? "text-rose-400 animate-pulse"
                       : scannerStatus !== "searching"
-                        ? "bg-rose-500 w-full"
-                        : "w-0"
-                  }`}
-                />
-              )}
+                        ? "text-rose-400"
+                        : "text-slate-500"
+                }`}
+              >
+                {isSuccessVerified
+                  ? "100%"
+                  : isVerifying
+                    ? "BUSY"
+                    : scannerStatus !== "searching"
+                      ? "READY"
+                      : "0%"}
+              </span>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-1.5">
+            <span className="shrink-0 text-slate-400">API Request:</span>
             <span
-              className={`w-9 text-right font-semibold ${
+              className={`ml-auto text-right font-semibold ${
                 isSuccessVerified
                   ? "text-emerald-400"
                   : isVerifying
                     ? "text-rose-400 animate-pulse"
-                    : scannerStatus !== "searching"
-                      ? "text-rose-400"
-                      : "text-slate-500"
+                    : "text-slate-500"
               }`}
             >
               {isSuccessVerified
-                ? "100%"
+                ? "SUCCESS (200)"
                 : isVerifying
-                  ? "BUSY"
-                  : scannerStatus !== "searching"
-                    ? "READY"
-                    : "0%"}
+                  ? "SENDING..."
+                  : "IDLE"}
             </span>
           </div>
         </div>
-
-        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-1.5">
-          <span className="shrink-0 text-slate-400">API Request:</span>
-          <span
-            className={`ml-auto text-right font-semibold ${
-              isSuccessVerified
-                ? "text-emerald-400"
-                : isVerifying
-                  ? "text-rose-400 animate-pulse"
-                  : "text-slate-500"
-            }`}
-          >
-            {isSuccessVerified
-              ? "SUCCESS (200)"
-              : isVerifying
-                ? "SENDING..."
-                : "IDLE"}
-          </span>
-        </div>
-      </div>
+      ) : null}
     </div>
   </div>
 );
