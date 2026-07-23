@@ -38,6 +38,8 @@ export const GEOMETRY_RULES = {
   minEdgeScore: 0.36,
   minCornerScore: 0.10,
   minAspectScore: 0.50, // Strict ISO 7810 ID-1 aspect ratio verification
+  minAspectRatio: 1.55,
+  maxAspectRatio: 1.65,
   minSpanCoverage: 0.78,
   maxSpanCoverage: 1.10,
   outerTolerance: 0.035,
