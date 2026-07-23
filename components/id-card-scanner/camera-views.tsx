@@ -161,18 +161,18 @@ export const CameraOverlay = ({
           <span>{showDebug ? "ซ่อน Debug Info" : "⚙️ แสดง Debug Info"}</span>
         </button>
 
-        {/* Debug Info Floating Overlay (Zero layout shift) */}
+        {/* Debug Info Floating Overlay (Zero layout shift & Mini Size) */}
         {showDebug ? (
-          <div className="absolute bottom-full mb-3 inset-x-0 z-30 flex w-full flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/90 p-3.5 text-xs font-mono text-slate-300 shadow-2xl backdrop-blur-md">
+          <div className="absolute bottom-full mb-2 inset-x-0 z-30 flex w-full flex-col gap-1 rounded-xl border border-white/10 bg-black/90 px-3 py-2 text-[11px] font-mono text-slate-300 shadow-2xl backdrop-blur-md">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Detect Status:</span>
+              <span className="text-slate-400">Detect:</span>
               <span className="font-semibold text-white uppercase">{scannerStatus}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Progress:</span>
-              <div className="flex items-center gap-2">
-                <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-white/20">
+              <div className="flex items-center gap-1.5">
+                <div className="relative h-1 w-16 overflow-hidden rounded-full bg-white/20">
                   {isVerifying ? (
                     <div className="absolute inset-0 size-full bg-rose-950/80">
                       <div className="size-full bg-gradient-to-r from-transparent via-rose-400 to-transparent animate-progress-shimmer" />
@@ -190,7 +190,7 @@ export const CameraOverlay = ({
                   )}
                 </div>
                 <span
-                  className={`w-9 text-right font-semibold ${
+                  className={`w-7 text-right font-semibold text-[10px] ${
                     isSuccessVerified
                       ? "text-emerald-400"
                       : isVerifying
@@ -211,10 +211,10 @@ export const CameraOverlay = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-1.5">
-              <span className="shrink-0 text-slate-400">API Request:</span>
+            <div className="flex items-center justify-between gap-1 border-t border-white/10 pt-1">
+              <span className="shrink-0 text-slate-400">API:</span>
               <span
-                className={`ml-auto text-right font-semibold ${
+                className={`ml-auto text-right font-semibold text-[10px] ${
                   isSuccessVerified
                     ? "text-emerald-400"
                     : isVerifying
@@ -234,10 +234,10 @@ export const CameraOverlay = ({
               <button
                 type="button"
                 onClick={onCopyMetrics}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 py-2 text-[11px] font-medium text-white transition-all hover:bg-white/20 active:scale-[.98]"
+                className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/10 py-1 text-[10px] font-medium text-white transition-all hover:bg-white/20 active:scale-[.98]"
               >
                 {copied ? (
-                  <span className="font-semibold text-emerald-400">✓ คัดลอก Debug Data เรียบร้อย!</span>
+                  <span className="font-semibold text-emerald-400">✓ คัดลอก Debug แล้ว</span>
                 ) : (
                   <span>📋 คัดลอก Debug Data</span>
                 )}
