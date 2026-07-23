@@ -139,7 +139,7 @@ export const CameraOverlay = ({
           <span>{statusUi.label}</span>
           {detectedAspect && detectedAspect > 0 ? (
             <span className="border-l border-white/15 pl-2.5 font-mono text-[11px] text-white/50">
-              Ratio {detectedAspect.toFixed(2)}
+              Ratio {detectedAspect.toFixed(4)}
             </span>
           ) : null}
         </div>

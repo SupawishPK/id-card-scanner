@@ -19,13 +19,19 @@ const PreviewPage = () => {
 
   const [copiedState, setCopiedState] = useState<string | null>(null);
 
+  const [detectedRatio, setDetectedRatio] = useState<string | null>(null);
+
   useEffect(() => {
     const stored = sessionStorage.getItem("captured_id_card");
+    const ratio = sessionStorage.getItem("captured_id_card_ratio");
     if (!stored) {
       router.replace("/");
       return;
     }
     setOriginalImageUrl(stored);
+    if (ratio) {
+      setDetectedRatio(ratio);
+    }
 
     const processCompression = async () => {
       try {
@@ -134,11 +140,18 @@ const PreviewPage = () => {
 
         {/* Success badge */}
         <div className="px-5 pb-4">
-          <div className="flex items-center gap-2 rounded-xl bg-emerald-500/15 px-4 py-3 text-sm text-emerald-400">
-            <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="font-medium">ตรวจสอบข้อมูลบัตรสำเร็จ</span>
+          <div className="flex items-center justify-between rounded-xl bg-emerald-500/15 px-4 py-3 text-sm text-emerald-400">
+            <div className="flex items-center gap-2">
+              <svg className="size-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">ตรวจสอบข้อมูลบัตรสำเร็จ</span>
+            </div>
+            {detectedRatio ? (
+              <span className="rounded-md border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-mono font-semibold text-emerald-300">
+                Ratio {detectedRatio}
+              </span>
+            ) : null}
           </div>
         </div>
 

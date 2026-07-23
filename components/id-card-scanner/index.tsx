@@ -98,6 +98,9 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         } else {
           console.log("[Scanner] ✅ Verification successful! Saving verified image to sessionStorage...");
           sessionStorage.setItem("captured_id_card", capturedImage);
+          if (debugMetrics?.detectedAspect) {
+            sessionStorage.setItem("captured_id_card_ratio", debugMetrics.detectedAspect.toFixed(4));
+          }
           setIsVerifying(false);
           setIsSuccessVerified(true);
           vibrate([60, 40, 80]);
