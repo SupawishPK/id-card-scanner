@@ -107,13 +107,12 @@ export const CameraOverlay = ({
               ) : (
                 <div
                   className={`h-full transition-all duration-75 ${
-                    isSuccessVerified ? "bg-emerald-400" : "bg-rose-500"
+                    isSuccessVerified
+                      ? "bg-emerald-400"
+                      : scannerStatus !== "searching"
+                        ? "bg-rose-500 w-full"
+                        : "w-0"
                   }`}
-                  style={{
-                    width: isSuccessVerified
-                      ? "100%"
-                      : `${Math.round(autoProgress * 100)}%`,
-                  }}
                 />
               )}
             </div>
@@ -123,22 +122,26 @@ export const CameraOverlay = ({
                   ? "text-emerald-400"
                   : isVerifying
                     ? "text-rose-400 animate-pulse"
-                    : "text-rose-400"
+                    : scannerStatus !== "searching"
+                      ? "text-rose-400"
+                      : "text-slate-500"
               }`}
             >
               {isSuccessVerified
                 ? "100%"
                 : isVerifying
                   ? "BUSY"
-                  : `${Math.round(autoProgress * 100)}%`}
+                  : scannerStatus !== "searching"
+                    ? "READY"
+                    : "0%"}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
-          <span className="text-slate-400">API Request:</span>
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-1.5">
+          <span className="shrink-0 text-slate-400">API Request:</span>
           <span
-            className={`font-semibold ${
+            className={`ml-auto text-right font-semibold ${
               isSuccessVerified
                 ? "text-emerald-400"
                 : isVerifying
@@ -149,7 +152,7 @@ export const CameraOverlay = ({
             {isSuccessVerified
               ? "SUCCESS (200)"
               : isVerifying
-                ? "SENDING REQUEST..."
+                ? "SENDING..."
                 : "IDLE"}
           </span>
         </div>

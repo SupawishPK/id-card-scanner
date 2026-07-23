@@ -244,8 +244,7 @@ export const evaluateCardFrame = ({
     detectedAspect >= GEOMETRY_RULES.minAspectRatio &&
     detectedAspect <= GEOMETRY_RULES.maxAspectRatio &&
     spanCoverage >= GEOMETRY_RULES.minSpanCoverage &&
-    spanCoverage <= GEOMETRY_RULES.maxSpanCoverage &&
-    skewScore >= GEOMETRY_RULES.minSkewScore;
+    spanCoverage <= GEOMETRY_RULES.maxSpanCoverage;
 
   return {
     edgeScores,

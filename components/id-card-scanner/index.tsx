@@ -63,43 +63,11 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
       ? { label: isVerifying ? "กำลังตรวจสอบข้อมูล…" : "กำลังบันทึกภาพ…", dotColor: "bg-rose-500" }
       : STATUS_UI[scannerStatus];
 
-  // Auto-capture when stable
+  // Instant auto-capture as soon as card ratio & geometry match
   useEffect(() => {
-    if (!canCapture) {
-      setAutoProgress(0);
-      return;
-    }
-
-    let startTime: number | null = null;
-    let animFrameId: number;
-    let lastVibrateStep = 0;
-
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const progress = Math.min(1, elapsed / AUTO_CAPTURE_DURATION_MS);
-      setAutoProgress(progress);
-
-      const step = Math.floor(progress * 4);
-      if (step > lastVibrateStep && step < 4) {
-        lastVibrateStep = step;
-        vibrate(35);
-      }
-
-      if (progress < 1) {
-        animFrameId = requestAnimationFrame(animate);
-      } else {
-        setAutoProgress(0);
-        vibrate([60, 40, 80]);
-        capturePhoto();
-      }
-    };
-
-    animFrameId = requestAnimationFrame(animate);
-    return () => {
-      cancelAnimationFrame(animFrameId);
-      setAutoProgress(0);
-    };
+    if (!canCapture) return;
+    vibrate(40);
+    capturePhoto();
   }, [canCapture, capturePhoto]);
 
   const verifyingImageRef = useRef<string | null>(null);
