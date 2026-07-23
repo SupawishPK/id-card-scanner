@@ -125,7 +125,7 @@ export const CameraOverlay = ({
         />
       </div>
 
-      <div className="flex w-full max-w-sm flex-col items-center gap-3">
+      <div className="relative flex w-full max-w-sm flex-col items-center gap-3">
         {/* Status Pill */}
         <div
           className="flex items-center gap-2.5 rounded-full border border-white/10 bg-black/60 px-4.5 py-2 text-xs font-medium text-white shadow-2xl backdrop-blur-xl transition-all"
@@ -161,9 +161,9 @@ export const CameraOverlay = ({
           <span>{showDebug ? "ซ่อน Debug Info" : "⚙️ แสดง Debug Info"}</span>
         </button>
 
-        {/* Debug Info Panel - render only when showDebug is true */}
+        {/* Debug Info Floating Overlay (Zero layout shift) */}
         {showDebug ? (
-          <div className="flex w-full flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/85 p-3.5 text-xs font-mono text-slate-300 shadow-2xl backdrop-blur-md transition-all">
+          <div className="absolute bottom-full mb-3 inset-x-0 z-30 flex w-full flex-col gap-1.5 rounded-2xl border border-white/10 bg-black/90 p-3.5 text-xs font-mono text-slate-300 shadow-2xl backdrop-blur-md">
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Detect Status:</span>
               <span className="font-semibold text-white uppercase">{scannerStatus}</span>
