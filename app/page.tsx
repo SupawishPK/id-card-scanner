@@ -7,8 +7,9 @@ const Home = () => {
   const onVerify = useCallback(async (capturedImage: string): Promise<IVerifyResult> => {
     console.log("[App/API] 🛰️ Verifying ID Card photo in background...");
 
-    // Mock: simulate short verification delay
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Mock: simulate API response delay between 1000 - 1500 ms
+    const delay = Math.floor(Math.random() * 500) + 1000;
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     // Mock: 50/50 pass/fail rate
     const roll = Math.random();
