@@ -119,7 +119,7 @@ export const measureAllCornersScores = ({
       width,
       height,
       centerXRatio: left.position,
-      centerYRatio: top.position,
+      centerYRatio: bottom.position,
       step,
     }),
   };

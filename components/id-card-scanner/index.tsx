@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIdCardScanner } from "./use-scanner";
 import { CameraHeader, CameraOverlay } from "./camera-views";
-import { DebugOverlay, ValidationDialogs } from "./dialog-views";
+import { ValidationDialogs } from "./dialog-views";
 import { STATUS_UI } from "./theme";
 
 const vibrate = (pattern: number | number[]) => {
@@ -189,12 +189,6 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         showDebug={showDebug}
         onToggleDebug={() => setShowDebug((prev) => !prev)}
         metrics={debugMetrics}
-      />
-
-      <DebugOverlay
-        metrics={debugMetrics}
-        scannerStatus={scannerStatus}
-        showDebug={showDebug}
       />
 
       <div className="relative z-10 pb-[max(2rem,env(safe-area-inset-bottom))]" />

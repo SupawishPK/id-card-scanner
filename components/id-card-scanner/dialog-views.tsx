@@ -1,15 +1,5 @@
 "use client";
 
-import type { IDebugMetrics, IScannerStatus } from "./use-scanner";
-
-export type IDebugOverlayProps = {
-  metrics?: IDebugMetrics | null;
-  scannerStatus?: IScannerStatus;
-  showDebug?: boolean;
-};
-
-export const DebugOverlay = (_props: IDebugOverlayProps) => null;
-
 export type IValidationDialogsProps = {
   cameraState: string;
   cameraError: string | null;
