@@ -52,7 +52,52 @@
 
 ## 3. 📊 Architecture & Sequence Diagrams (Mermaid)
 
-### A. System Pipeline Flowchart
+### A. High-Level Architecture (โครงสร้างระดับสูง)
+
+```mermaid
+graph TD
+    classDef client fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef engine fill:#312e81,stroke:#8b5cf6,stroke-width:2px,color:#fff;
+    classDef ui fill:#831843,stroke:#ec4899,stroke-width:2px,color:#fff;
+    classDef backend fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+
+    subgraph ClientDevice["📱 Client Device (Mobile Browser)"]
+        subgraph ScannerApp["IdCardScanner React Component"]
+            CamModule["📷 Camera Controller<br/>(1080p Stream)"]:::client
+            CVEngine["⚡ On-Device Vision Engine<br/>(Pure Canvas + ISO 7810 Rules)"]:::engine
+            UIOverlay["🎨 UI & Feedback Overlay<br/>(Locked Frame & Error Toast)"]:::ui
+        end
+    end
+
+    BackendAPI["🌐 Verification API<br/>(Backend / External Service)"]:::backend
+    SessionStore["💾 Session Storage<br/>(Verified Result)"]:::backend
+
+    CamModule -->|Video Frames| CVEngine
+    CVEngine -->|Real-time Metrics| UIOverlay
+    CVEngine -->|Auto-Capture Image| BackendAPI
+    BackendAPI -->|Success| SessionStore
+    BackendAPI -->|Error Response| UIOverlay
+```
+
+### B. High-Level User Flow (ขั้นตอนการทำงานหลัก)
+
+```mermaid
+flowchart LR
+    A["📷 1. ส่องกล้อง"] --> B["⚡ 2. ตรวจจับบัตรอัตโนมัติ<br/>(On-Device Real-Time)"]
+    B --> C["📸 3. ถ่ายภาพอัตโนมัติ<br/>(Instant Auto-Capture)"]
+    C --> D["🌐 4. ส่งตรวจสอบกับ API<br/>(Background Verify)"]
+    D -->|ผ่าน| E["✅ 5. สำเร็จ & ไปหน้าพรีวิว"]
+    D -->|ไม่ผ่าน| F["🚨 5. แจ้งเตือน Error<br/>(3.8s & สแกนใหม่)"]
+
+    style A fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style B fill:#0f172a,stroke:#8b5cf6,stroke-width:2px,color:#fff
+    style C fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#fff
+    style D fill:#0f172a,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style E fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#fff
+    style F fill:#0f172a,stroke:#ef4444,stroke-width:2px,color:#fff
+```
+
+### C. Detailed System Pipeline Flowchart
 
 ```mermaid
 flowchart TD
