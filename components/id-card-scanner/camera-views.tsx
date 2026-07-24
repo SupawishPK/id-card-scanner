@@ -35,6 +35,12 @@ export type ICameraOverlayProps = {
   statusUi: IStatusUi;
   isSuccessVerified?: boolean;
   isVerifying?: boolean;
+  verificationError?: {
+    title?: string;
+    description?: string;
+    hint?: string;
+  } | null;
+  onDismissError?: () => void;
   detectedAspect?: number;
   showDebug?: boolean;
   onToggleDebug?: () => void;
@@ -48,6 +54,8 @@ export const CameraOverlay = ({
   statusUi,
   isSuccessVerified,
   isVerifying,
+  verificationError,
+  onDismissError,
   detectedAspect,
   showDebug = true,
   onToggleDebug,
@@ -104,6 +112,49 @@ export const CameraOverlay = ({
 
   return (
     <div className="relative z-10 flex flex-1 flex-col items-center justify-between px-6 py-3">
+      {/* Error Notification Toast Card */}
+      {verificationError ? (
+        <div className="absolute inset-x-4 top-2 z-30 flex flex-col gap-2 rounded-2xl border border-rose-500/40 bg-rose-950/95 p-4 text-white shadow-2xl backdrop-blur-xl">
+          <div className="flex items-start gap-3">
+            <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-rose-500/20 text-rose-400">
+              <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-0.5">
+              <h3 className="text-sm font-semibold text-rose-200">
+                {verificationError.title || "ตรวจสอบข้อมูลไม่สำเร็จ"}
+              </h3>
+              {verificationError.description ? (
+                <p className="text-xs leading-relaxed text-rose-100/90">
+                  {verificationError.description}
+                </p>
+              ) : null}
+              {verificationError.hint ? (
+                <p className="mt-1 text-[11px] font-medium text-rose-300/80">
+                  💡 {verificationError.hint}
+                </p>
+              ) : null}
+            </div>
+
+            {onDismissError ? (
+              <button
+                type="button"
+                onClick={onDismissError}
+                className="shrink-0 rounded-lg bg-rose-500/20 px-2.5 py-1 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/30 active:scale-95"
+              >
+                ลองใหม่
+              </button>
+            ) : null}
+          </div>
+
+          <div className="relative mt-1 h-1 w-full overflow-hidden rounded-full bg-rose-950/50">
+            <div className="h-full bg-rose-500 animate-error-progress" />
+          </div>
+        </div>
+      ) : null}
+
       {/* Top Fixed Height Container (Prevents frame guideline displacement) */}
       <div className="relative flex h-36 w-full max-w-sm shrink-0 items-center justify-center">
         {showDebug ? (
@@ -126,9 +177,11 @@ export const CameraOverlay = ({
                       className={`h-full transition-all duration-75 ${
                         isSuccessVerified
                           ? "bg-emerald-400"
-                          : scannerStatus !== "searching"
+                          : verificationError
                             ? "bg-rose-500 w-full"
-                            : "w-0"
+                            : scannerStatus !== "searching"
+                              ? "bg-rose-500 w-full"
+                              : "w-0"
                       }`}
                     />
                   )}
@@ -137,20 +190,24 @@ export const CameraOverlay = ({
                   className={`w-7 text-right font-semibold text-[10px] ${
                     isSuccessVerified
                       ? "text-emerald-400"
-                      : isVerifying
-                        ? "text-rose-400 animate-pulse"
-                        : scannerStatus !== "searching"
-                          ? "text-rose-400"
-                          : "text-slate-500"
+                      : verificationError
+                        ? "text-rose-400"
+                        : isVerifying
+                          ? "text-rose-400 animate-pulse"
+                          : scannerStatus !== "searching"
+                            ? "text-rose-400"
+                            : "text-slate-500"
                   }`}
                 >
                   {isSuccessVerified
                     ? "100%"
-                    : isVerifying
-                      ? "BUSY"
-                      : scannerStatus !== "searching"
-                        ? "READY"
-                        : "0%"}
+                    : verificationError
+                      ? "FAIL"
+                      : isVerifying
+                        ? "BUSY"
+                        : scannerStatus !== "searching"
+                          ? "READY"
+                          : "0%"}
                 </span>
               </div>
             </div>
@@ -161,16 +218,20 @@ export const CameraOverlay = ({
                 className={`ml-auto text-right font-semibold text-[10px] ${
                   isSuccessVerified
                     ? "text-emerald-400"
-                    : isVerifying
-                      ? "text-rose-400 animate-pulse"
-                      : "text-slate-500"
+                    : verificationError
+                      ? "text-rose-400 font-semibold"
+                      : isVerifying
+                        ? "text-rose-400 animate-pulse"
+                        : "text-slate-500"
                 }`}
               >
                 {isSuccessVerified
                   ? "SUCCESS (200)"
-                  : isVerifying
-                    ? "SENDING..."
-                    : "IDLE"}
+                  : verificationError
+                    ? "FAIL (400)"
+                    : isVerifying
+                      ? "SENDING..."
+                      : "IDLE"}
               </span>
             </div>
 

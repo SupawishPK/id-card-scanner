@@ -38,3 +38,16 @@ button { -webkit-tap-highlight-color: transparent; }
 .animate-progress-shimmer {
   animation: progress-shimmer 1s infinite linear;
 }
+
+@keyframes error-progress {
+  0% {
+    width: 100%;
+  }
+  100% {
+    width: 0%;
+  }
+}
+
+.animate-error-progress {
+  animation: error-progress 3.8s linear forwards;
+}

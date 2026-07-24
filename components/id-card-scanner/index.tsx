@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIdCardScanner } from "./use-scanner";
 import { CameraHeader, CameraOverlay } from "./camera-views";
@@ -43,6 +43,8 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
   const [showDebug, setShowDebug] = useState<boolean>(true);
+  const [verificationError, setVerificationError] = useState<ICustomErrorDetails | null>(null);
+  const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     cameraState,
@@ -55,14 +57,36 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     retryCamera,
   } = useIdCardScanner({ videoRef, roiRef: guideRef });
 
+  const clearErrorTimer = () => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+  };
+
+  const handleDismissError = useCallback(() => {
+    clearErrorTimer();
+    setVerificationError(null);
+    verifyingImageRef.current = null;
+    retryCapture();
+  }, [retryCapture]);
+
+  useEffect(() => {
+    return () => {
+      clearErrorTimer();
+    };
+  }, []);
+
   const isStable = scannerStatus === "stable";
-  const canCapture = isStable && !capturedImage && !isVerifying && !isSuccessVerified;
+  const canCapture = isStable && !capturedImage && !isVerifying && !isSuccessVerified && !verificationError;
 
   const statusUi = isSuccessVerified
     ? { label: "ตรวจสอบข้อมูลสำเร็จ", dotColor: "bg-emerald-400" }
-    : isVerifying || autoProgress > 0 || scannerStatus === "stable"
-      ? { label: isVerifying ? "กำลังตรวจสอบข้อมูล…" : "กำลังบันทึกภาพ…", dotColor: "bg-rose-500" }
-      : STATUS_UI[scannerStatus];
+    : verificationError
+      ? { label: verificationError.title || "ตรวจสอบข้อมูลไม่สำเร็จ", dotColor: "bg-rose-500 animate-pulse" }
+      : isVerifying || autoProgress > 0 || scannerStatus === "stable"
+        ? { label: isVerifying ? "กำลังตรวจสอบข้อมูล…" : "กำลังบันทึกภาพ…", dotColor: "bg-rose-500" }
+        : STATUS_UI[scannerStatus];
 
   // Instant auto-capture as soon as card ratio & geometry match
   useEffect(() => {
@@ -73,7 +97,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
   const verifyingImageRef = useRef<string | null>(null);
 
-  // Secret background verification effect
+  // Background verification effect
   useEffect(() => {
     if (!capturedImage || verifyingImageRef.current === capturedImage || isSuccessVerified) {
       return;
@@ -81,7 +105,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
 
     verifyingImageRef.current = capturedImage;
     setIsVerifying(true);
-    console.log("[Scanner] 📸 ID Card photo captured. Secretly verifying data with API in background...");
+    console.log("[Scanner] 📸 ID Card photo captured. Verifying data with API...");
 
     let canceled = false;
 
@@ -91,10 +115,22 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         if (canceled) return;
 
         if (res && typeof res === "object" && "success" in res && !res.success) {
-          console.log("[Scanner] ⚠️ Verification failed silently. Resetting scanner for next scan...");
-          verifyingImageRef.current = null;
+          const errDetails: ICustomErrorDetails = res.error || {
+            title: "ภาพไม่ชัดเจน",
+            description: "ระบบไม่สามารถอ่านข้อมูลบนบัตรได้ครบถ้วน กรุณาถ่ายใหม่",
+          };
+          console.log("[Scanner] ⚠️ Verification failed:", errDetails);
+          vibrate([100, 50, 100]);
+          setVerificationError(errDetails);
           setIsVerifying(false);
-          retryCapture();
+
+          // Keep error message visible for 3.8s so customer has ample time to read
+          clearErrorTimer();
+          errorTimerRef.current = setTimeout(() => {
+            setVerificationError(null);
+            verifyingImageRef.current = null;
+            retryCapture();
+          }, 3800);
         } else {
           console.log("[Scanner] ✅ Verification successful! Saving verified image to sessionStorage...");
           sessionStorage.setItem("captured_id_card", capturedImage);
@@ -110,10 +146,21 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         }
       } catch (err) {
         if (canceled) return;
-        console.log("[Scanner] ❌ Verification threw error silently:", err);
-        verifyingImageRef.current = null;
+        console.log("[Scanner] ❌ Verification threw error:", err);
+        const errDetails: ICustomErrorDetails = {
+          title: "ระบบขัดข้อง",
+          description: "ไม่สามารถเชื่อมต่อระบบตรวจสอบข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
+        };
+        vibrate([100, 50, 100]);
+        setVerificationError(errDetails);
         setIsVerifying(false);
-        retryCapture();
+
+        clearErrorTimer();
+        errorTimerRef.current = setTimeout(() => {
+          setVerificationError(null);
+          verifyingImageRef.current = null;
+          retryCapture();
+        }, 3800);
       }
     };
 
@@ -122,7 +169,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     return () => {
       canceled = true;
     };
-  }, [capturedImage, onVerify, isSuccessVerified, retryCapture, router]);
+  }, [capturedImage, onVerify, isSuccessVerified, retryCapture, router, debugMetrics]);
 
   return (
     <section className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black sm:h-[min(840px,calc(100dvh-3rem))] sm:max-w-md sm:rounded-3xl sm:ring-1 sm:ring-white/10">
@@ -144,6 +191,8 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
         statusUi={statusUi}
         isSuccessVerified={isSuccessVerified}
         isVerifying={isVerifying}
+        verificationError={verificationError}
+        onDismissError={handleDismissError}
         detectedAspect={debugMetrics?.detectedAspect}
         showDebug={showDebug}
         onToggleDebug={() => setShowDebug((prev) => !prev)}
