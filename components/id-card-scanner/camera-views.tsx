@@ -55,7 +55,7 @@ export const CameraOverlay = ({
   verificationError,
   onDismissError,
   detectedAspect,
-  showDebug = true,
+  showDebug = false,
   onToggleDebug,
   metrics,
 }: ICameraOverlayProps) => {

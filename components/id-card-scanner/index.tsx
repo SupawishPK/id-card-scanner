@@ -37,7 +37,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const guideRef = useRef<HTMLCanvasElement>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
-  const [showDebug, setShowDebug] = useState<boolean>(true);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
   const [verificationError, setVerificationError] = useState<ICustomErrorDetails | null>(null);
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
 
