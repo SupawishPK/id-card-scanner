@@ -209,7 +209,7 @@ flowchart LR
     B --> C["📸 3. ถ่ายภาพอัตโนมัติ<br/>(Instant Auto-Capture)"]
     C --> D["🌐 4. ส่งตรวจสอบกับ API<br/>(Background Verify)"]
     D -->|ผ่าน| E["✅ 5. สำเร็จ & ไปหน้าพรีวิว"]
-    D -->|ไม่ผ่าน| F["🚨 5. แจ้งเตือน Error<br/>(3.8s & สแกนใหม่)"]
+    D -->|ไม่ผ่าน| F["🚨 5. แจ้งเตือน Error<br/>(2.5s & สแกนใหม่)"]
 
     style A fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff
     style B fill:#0f172a,stroke:#8b5cf6,stroke-width:2px,color:#fff
@@ -263,7 +263,7 @@ flowchart TD
         O --> P["ส่งภาพไปที่ Verification API<br/>(Background Async Request)"]
         P --> Q{"ผลลัพธ์จาก API?"}
         Q -- Success --> R["✅ Save ลง Session Storage<br/>และ Navigate ไปหน้า /preview"]
-        Q -- Error --> S["🚨 แสดง Error Toast Card<br/>(3.8s Progress Timer / Manual Retry)"]
+        Q -- Error --> S["🚨 แสดง Error Toast Card<br/>(2.5s Progress Timer / Manual Retry)"]
         S --> T["Reset Scanner & Retry Capture"]
         T --> D
     end
@@ -316,8 +316,8 @@ sequenceDiagram
         View-->>User: แสดงสถานะสำเร็จ & นำทางไปหน้า /preview
     else กรณีตรวจสอบล้มเหลว (API Error)
         API-->>View: { success: false, error: details }
-        View-->>User: แสดง Error Toast Card (โชว์หลอดเวลา 3.8 วินาที + สั่นเตือน)
-        Note over View: รอครบ 3.8 วินาที หรือ User กดปุ่ม "ลองใหม่"
+        View-->>User: แสดง Error Toast Card (โชว์หลอดเวลา 2.5 วินาที)
+        Note over View: รอครบ 2.5 วินาที หรือ User กดปุ่ม "ลองใหม่"
         View->>Engine: retryCapture() (รีเซ็ตกลับไปเริ่มสแกนใหม่)
     end
         </div>

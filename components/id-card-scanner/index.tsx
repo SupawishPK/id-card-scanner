@@ -120,17 +120,16 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
             description: "ระบบไม่สามารถอ่านข้อมูลบนบัตรได้ครบถ้วน กรุณาถ่ายใหม่",
           };
           console.log("[Scanner] ⚠️ Verification failed:", errDetails);
-          vibrate([100, 50, 100]);
           setVerificationError(errDetails);
           setIsVerifying(false);
 
-          // Keep error message visible for 3.8s so customer has ample time to read
+          // Keep error message visible for 2.5s so customer has ample time to read
           clearErrorTimer();
           errorTimerRef.current = setTimeout(() => {
             setVerificationError(null);
             verifyingImageRef.current = null;
             retryCapture();
-          }, 3800);
+          }, 2500);
         } else {
           console.log("[Scanner] ✅ Verification successful! Saving verified image to sessionStorage...");
           sessionStorage.setItem("captured_id_card", capturedImage);
@@ -151,7 +150,6 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
           title: "ระบบขัดข้อง",
           description: "ไม่สามารถเชื่อมต่อระบบตรวจสอบข้อมูลได้ กรุณาลองใหม่อีกครั้ง",
         };
-        vibrate([100, 50, 100]);
         setVerificationError(errDetails);
         setIsVerifying(false);
 
@@ -160,7 +158,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
           setVerificationError(null);
           verifyingImageRef.current = null;
           retryCapture();
-        }, 3800);
+        }, 2500);
       }
     };
 

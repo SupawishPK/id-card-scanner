@@ -49,5 +49,5 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 
 .animate-error-progress {
-  animation: error-progress 3.8s linear forwards;
+  animation: error-progress 2.5s linear forwards;
 }
