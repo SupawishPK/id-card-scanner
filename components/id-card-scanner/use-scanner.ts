@@ -65,6 +65,7 @@ export const useIdCardScanner = ({ videoRef, roiRef }: IScannerOptions) => {
   const animationFrameRef = useRef<number | null>(null);
   const cameraRequestIdRef = useRef(0);
   const lastSampleAtRef = useRef(0);
+  const lastMetricsUpdateRef = useRef(0);
   const capturedRef = useRef(false);
   const runningRef = useRef(false);
   const frameStateRef = useRef(createFrameState());
@@ -127,7 +128,15 @@ export const useIdCardScanner = ({ videoRef, roiRef }: IScannerOptions) => {
     (now: number) => {
       const video = videoRef.current;
       const roi = roiRef.current;
-      if (!video || !roi || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+      if (
+        !video ||
+        !roi ||
+        video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA ||
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        return;
+      }
 
       const fs = frameStateRef.current;
       if (!fs.roiBounds || fs.needsRectRecalc) {
@@ -177,7 +186,12 @@ export const useIdCardScanner = ({ videoRef, roiRef }: IScannerOptions) => {
 
       setScannerStatus((current: IScannerStatus) => (current === result.scannerStatus ? current : result.scannerStatus));
       setDistanceHint((current: IDistanceHint) => (current === result.distanceHint ? current : result.distanceHint));
-      setDebugMetrics(result.debugMetrics);
+
+      // Throttle React state updates for debug metrics to 10 FPS to eliminate main-thread stutter
+      if (now - lastMetricsUpdateRef.current >= 100) {
+        lastMetricsUpdateRef.current = now;
+        setDebugMetrics(result.debugMetrics);
+      }
     },
     [config, roiRef, videoRef],
   );

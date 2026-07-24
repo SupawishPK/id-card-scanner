@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject, useEffect } from "react";
+import { memo, type RefObject, useEffect } from "react";
 import type { IScannerStatus } from "./geometry";
 
 const FRAME_VIEWBOX_WIDTH = 321;
@@ -52,7 +52,7 @@ type ICardGuideCanvasProps = {
   isVerifying?: boolean;
 };
 
-export const CardGuideCanvas = ({
+export const CardGuideCanvas = memo(({
   canvasRef,
   scannerStatus,
   autoProgress = 0,
@@ -127,4 +127,6 @@ export const CardGuideCanvas = ({
       aria-hidden="true"
     />
   );
-};
+});
+
+CardGuideCanvas.displayName = "CardGuideCanvas";

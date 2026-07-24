@@ -5,21 +5,18 @@ export type ITrackCapabilities = MediaTrackCapabilities & {
 };
 
 export const requestCamera = async (): Promise<MediaStream> => {
-  // Request the highest resolution the device supports
-  // width/height with ideal=9999 lets the browser negotiate max available
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 9999 },
-      height: { ideal: 9999 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
     },
   };
 
   try {
     return await navigator.mediaDevices.getUserMedia(constraints);
   } catch {
-    // Fallback to safe minimum if device rejects the extreme ideal
     return navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: { ideal: "environment" } },
