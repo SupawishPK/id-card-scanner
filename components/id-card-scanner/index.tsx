@@ -42,7 +42,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const [autoProgress, setAutoProgress] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
-  const [showDebug, setShowDebug] = useState<boolean>(false);
+  const [showDebug, setShowDebug] = useState<boolean>(true);
 
   const {
     cameraState,

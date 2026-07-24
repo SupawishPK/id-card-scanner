@@ -49,7 +49,7 @@ export const CameraOverlay = ({
   isSuccessVerified,
   isVerifying,
   detectedAspect,
-  showDebug = false,
+  showDebug = true,
   onToggleDebug,
   metrics,
 }: ICameraOverlayProps) => {
@@ -103,9 +103,9 @@ export const CameraOverlay = ({
   };
 
   return (
-    <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-5 px-6">
+    <div className="relative z-10 flex flex-1 flex-col items-center justify-between px-6 py-3">
       {/* Top Fixed Height Container (Prevents frame guideline displacement) */}
-      <div className="relative flex h-24 w-full max-w-sm items-center justify-center">
+      <div className="relative flex h-36 w-full max-w-sm shrink-0 items-center justify-center">
         {showDebug ? (
           <div className="flex w-full flex-col gap-1 rounded-2xl border border-white/10 bg-black/85 px-3.5 py-2.5 text-[11px] font-mono text-slate-300 shadow-xl backdrop-blur-md">
             <div className="flex items-center justify-between">
@@ -200,7 +200,7 @@ export const CameraOverlay = ({
       </div>
 
       <div
-        className="relative w-full max-w-sm rounded-2xl"
+        className="relative w-full max-w-sm shrink-0 rounded-2xl"
         style={{ aspectRatio: ID_CARD_ASPECT_RATIO }}
       >
         <CardGuideCanvas
@@ -212,7 +212,7 @@ export const CameraOverlay = ({
         />
       </div>
 
-      <div className="flex w-full max-w-sm flex-col items-center gap-3">
+      <div className="flex h-24 w-full max-w-sm shrink-0 flex-col items-center justify-center gap-3">
         {/* Status Pill */}
         <div
           className="flex items-center gap-2.5 rounded-full border border-white/10 bg-black/60 px-4.5 py-2 text-xs font-medium text-white shadow-2xl backdrop-blur-xl transition-all"
