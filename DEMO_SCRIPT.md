@@ -101,38 +101,38 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    subgraph S1["1. การเริ่มต้นและเตรียมกล้อง"]
-        A["📷 ผู้ใช้เปิดหน้าเว็บแอป"] --> B["ขอสตรีมกล้องหลัง 1080p<br/>(facingMode: environment)"]
-        B --> C{"เช็คความพร้อมสตรีมกล้อง<br/>(readyState >= 4)"}
-        C -- รอกล้องพร้อม --> C
-        C -- พร้อมแล้ว --> D["เริ่มลูปตรวจจับภาพสแกน<br/>(requestAnimationFrame ~15 FPS)"]
+    subgraph S1["1. Camera Setup & Optimization"]
+        A["📷 ผู้ใช้เปิดเว็บแอป"] --> B["ขอสตรีมกล้องหลัง 1080p<br/>(facingMode: environment)"]
+        B --> C{"เช็คความพร้อมของ Video Stream<br/>(readyState >= HAVE_ENOUGH_DATA)"}
+        C -- Waiting --> C
+        C -- Ready --> D["เริ่มลูปตรวจจับ Detection Loop<br/>(requestAnimationFrame ~15 FPS)"]
     end
 
-    subgraph S2["2. เอนจินวิเคราะห์ภาพเรียลไทม์"]
-        D --> E["ดึงภาพเฉพาะพื้นที่กรอบ ROI<br/>(ตามตำแหน่งกรอบบนหน้าจอ)"]
-        E --> F["ย่อภาพลง Canvas สแกน<br/>(ขนาด 381x240 พิกเซล)"]
-        F --> G["วิเคราะห์ความสว่างและการสั่น<br/>(Luma Mean, Variance, Motion)"]
-        G --> H["สแกนเส้นขอบและมุมบัตร 4 มุม<br/>(Gradient Density & Contrast)"]
-        H --> I["ตรวจสอบเรขาคณิตและอัตราส่วน<br/>(มาตรฐาน ISO 7810 ~1.5858)"]
+    subgraph S2["2. Real-time Frame Analysis Engine"]
+        D --> E["Crop ROI จาก Video Stream<br/>(ตามพิกัดกรอบบนหน้าจอ)"]
+        E --> F["Resize ลง Analysis Canvas<br/>(ขนาด 381x240 px)"]
+        F --> G["วิเคราะห์ Luma & Motion<br/>(Mean, Variance, Frame Delta)"]
+        G --> H["Scan เส้นขอบและ Corner 4 มุม<br/>(Gradient Density & Contrast)"]
+        H --> I["เช็ค Geometry & Aspect Ratio<br/>(ISO 7810 ID-1 Standard ~1.5858)"]
     end
 
-    subgraph S3["3. สถานะการตรวจจับ (State Machine)"]
+    subgraph S3["3. Detection State Machine"]
         I --> J{"พบรูปทรงบัตรในกรอบ?"}
-        J -- ไม่พบ --> K["สถานะ: SEARCHING (กำลังค้นหา)<br/>(กรอบสแกน: สีขาว)"]
+        J -- No --> K["Status: SEARCHING<br/>(Guide Frame: สีขาว)"]
         K --> D
-        J -- พบบัตร --> L{"เช็คความนิ่งและอัตราส่วน"}
-        L -- กำลังจัดวาง --> M["สถานะ: ALIGNING (กำลังจัดตำแหน่ง)<br/>(กรอบสแกน: สีแดง)"]
+        J -- Yes --> L{"เช็คความนิ่งและ Aspect Ratio"}
+        L -- Partial --> M["Status: ALIGNING<br/>(Guide Frame: สีแดง)"]
         M --> D
-        L -- นิ่งครบ 180ms --> N["สถานะ: STABLE (บัตรนิ่งและตรง)<br/>(ทริกเกอร์ถ่ายภาพอัตโนมัติ)"]
+        L -- Stable >= 180ms --> N["Status: STABLE<br/>(Trigger Auto-Capture)"]
     end
 
-    subgraph S4["4. การถ่ายภาพและตรวจสอบ API"]
-        N --> O["📸 ถ่ายภาพความละเอียดสูง<br/>(ตัดเฉพาะพื้นที่บัตรประชาชน)"]
-        O --> P["ส่งภาพไปตรวจสอบที่ API<br/>(ทำงานเบื้องหลังแบบ Async)"]
+    subgraph S4["4. Capture & API Verification"]
+        N --> O["📸 Capture ภาพ High-Res<br/>(Cropped ROI ภาพบัตรประชาชน)"]
+        O --> P["ส่งภาพไปที่ Verification API<br/>(Background Async Request)"]
         P --> Q{"ผลลัพธ์จาก API?"}
-        Q -- สำเร็จ (Success) --> R["✅ บันทึกลง Session Storage<br/>และพาไปหน้าพรีวิว (/preview)"]
-        Q -- ไม่สำเร็จ (Error) --> S["🚨 แสดงกล่องแจ้งเตือน Error Toast<br/>(ค้าง 3.8s พร้อมหลอดเวลา / ปุ่มลองใหม่)"]
-        S --> T["รีเซ็ตสแกนเนอร์เพื่อเริ่มถ่ายใหม่"]
+        Q -- Success --> R["✅ Save ลง Session Storage<br/>และ Navigate ไปหน้า /preview"]
+        Q -- Error --> S["🚨 แสดง Error Toast Card<br/>(3.8s Progress Timer / Manual Retry)"]
+        S --> T["Reset Scanner & Retry Capture"]
         T --> D
     end
 
