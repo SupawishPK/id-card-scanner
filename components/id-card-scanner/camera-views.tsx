@@ -276,17 +276,17 @@ export const CameraOverlay = ({
       <div className="flex h-24 w-full max-w-sm shrink-0 flex-col items-center justify-center gap-3">
         {/* Status Pill */}
         <div
-          className="flex items-center gap-2.5 rounded-full border border-white/10 bg-black/60 px-4.5 py-2 text-xs font-medium text-white shadow-2xl backdrop-blur-xl transition-all"
+          className="flex h-9 items-center justify-center gap-2.5 rounded-full border border-white/10 bg-black/60 px-4 py-2 text-xs font-medium text-white shadow-2xl backdrop-blur-xl transition-colors duration-200"
           role="status"
           aria-live="polite"
         >
           <span
-            className={`size-2 rounded-full transition-colors ${statusUi.dotColor}`}
+            className={`size-2 shrink-0 rounded-full transition-colors duration-200 ${statusUi.dotColor}`}
             aria-hidden="true"
           />
-          <span>{statusUi.label}</span>
+          <span className="truncate">{statusUi.label}</span>
           {detectedAspect && detectedAspect > 0 ? (
-            <span className="border-l border-white/15 pl-2.5 font-mono text-[11px] text-white/50">
+            <span className="shrink-0 border-l border-white/15 pl-2.5 font-mono text-[11px] text-white/50">
               Ratio {detectedAspect.toFixed(4)}
             </span>
           ) : null}

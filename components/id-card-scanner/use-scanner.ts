@@ -42,8 +42,6 @@ const createFrameState = (): IFrameState => ({
 const resetFrameState = (fs: IFrameState): void => {
   fs.canvas = null;
   fs.previousLuma = null;
-  fs.roiBounds = null;
-  fs.needsRectRecalc = true;
   fs.hasDetectedCard = false;
   fs.isCaptureAligned = false;
   fs.readiness = createReadinessState();
