@@ -188,8 +188,8 @@ sequenceDiagram
 | :--- | :--- | :--- |
 | **Luma Conversion** | ITU-R BT.601 Bitwise Shift | $(R \times 77 + G \times 150 + B \times 29) \gg 8$ ความเร็วสูง ไม่ใช้ Float |
 | **Motion Detection** | L1-Norm Frame Difference | คำนวณผลต่างความสว่างระหว่างเฟรมก่อนหน้าและปัจจุบันเพื่อวัดความนิ่งของมือ |
-| **Standard Ratio** | ISO/IEC 7810 ID-1 | มาตรฐานบัตรประชาชน $85.60\text{mm} \times 53.98\text{mm} \approx 1.5858$ |
-| **Analysis Canvas** | Downscaled $381 \times 240$ | ย่อพิกเซลสำหรับสแกน ทำให้ประมวลผลเสร็จใน $< 2\text{ms}$ ต่อเฟรม |
+| **Standard Ratio Range** | ISO/IEC 7810 ID-1 | มาตรฐานบัตรประชาชน $85.60\text{mm} \times 53.98\text{mm} \approx \mathbf{1.5858}$ (ช่วงยอมรับ Min: **1.55** ถึง Max: **1.65**) |
+| **Analysis Canvas** | Downscaled $381 \times 240$ | ย่อพิกเซล ROI สำหรับสแกน ทำให้ประมวลผลเสร็จใน $< 2\text{ms}$ ต่อเฟรม |
 | **UI Performance** | React State Throttling (10 FPS) | แยก Loop สแกน (15 FPS) ออกจาก DOM Re-render (10 FPS) ช่วยให้ภาพไม่กระตุก |
 | **Canvas Redraw** | `React.memo` Component | ป้องกันการรีดรอว์กรอบ Canvas ซ้ำซ้อนเมื่อไม่มีการเปลี่ยนสถานะ |
 
