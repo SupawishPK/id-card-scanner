@@ -31,7 +31,6 @@ export const CameraHeader = ({ onBack }: ICameraHeaderProps) => (
 export type ICameraOverlayProps = {
   guideRef: RefObject<HTMLCanvasElement | null>;
   scannerStatus: IScannerStatus;
-  autoProgress: number;
   statusUi: IStatusUi;
   isSuccessVerified?: boolean;
   isVerifying?: boolean;
@@ -50,7 +49,6 @@ export type ICameraOverlayProps = {
 export const CameraOverlay = ({
   guideRef,
   scannerStatus,
-  autoProgress,
   statusUi,
   isSuccessVerified,
   isVerifying,
@@ -267,7 +265,6 @@ export const CameraOverlay = ({
         <CardGuideCanvas
           canvasRef={guideRef}
           scannerStatus={scannerStatus}
-          autoProgress={autoProgress}
           isSuccessVerified={isSuccessVerified}
           isVerifying={isVerifying}
         />

@@ -1,8 +1,6 @@
 "use client";
 
 import type { IDebugMetrics, IScannerStatus } from "./use-scanner";
-import { ID_CARD_ASPECT_RATIO } from "./config";
-import { COPY_ICON, type IValidationState } from "./theme";
 
 export type IDebugOverlayProps = {
   metrics?: IDebugMetrics | null;

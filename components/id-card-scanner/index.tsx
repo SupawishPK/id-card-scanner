@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { useIdCardScanner } from "./use-scanner";
 import { CameraHeader, CameraOverlay } from "./camera-views";
 import { DebugOverlay, ValidationDialogs } from "./dialog-views";
-import {
-  AUTO_CAPTURE_DURATION_MS,
-  AUTO_STABLE_STATUS,
-  STATUS_UI,
-} from "./theme";
+import { STATUS_UI } from "./theme";
 
 const vibrate = (pattern: number | number[]) => {
   try {
@@ -39,7 +35,6 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const guideRef = useRef<HTMLCanvasElement>(null);
-  const [autoProgress, setAutoProgress] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [isSuccessVerified, setIsSuccessVerified] = useState<boolean>(false);
   const [showDebug, setShowDebug] = useState<boolean>(true);
@@ -84,7 +79,7 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
     ? { label: "ตรวจสอบข้อมูลสำเร็จ", dotColor: "bg-emerald-400" }
     : verificationError
       ? { label: verificationError.title || "ตรวจสอบข้อมูลไม่สำเร็จ", dotColor: "bg-rose-500 animate-pulse" }
-      : isVerifying || autoProgress > 0 || scannerStatus === "stable"
+      : isVerifying || scannerStatus === "stable"
         ? { label: isVerifying ? "กำลังตรวจสอบข้อมูล…" : "กำลังบันทึกภาพ…", dotColor: "bg-rose-500" }
         : STATUS_UI[scannerStatus];
 
@@ -185,7 +180,6 @@ export const IdCardScanner = ({ onBack, onVerify }: IIdCardScannerProps) => {
       <CameraOverlay
         guideRef={guideRef}
         scannerStatus={scannerStatus}
-        autoProgress={autoProgress}
         statusUi={statusUi}
         isSuccessVerified={isSuccessVerified}
         isVerifying={isVerifying}

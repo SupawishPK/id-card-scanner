@@ -47,7 +47,6 @@ const FRAME_COLOR: Record<IScannerStatus, string> = {
 type ICardGuideCanvasProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   scannerStatus: IScannerStatus;
-  autoProgress?: number;
   isSuccessVerified?: boolean;
   isVerifying?: boolean;
 };
@@ -55,7 +54,6 @@ type ICardGuideCanvasProps = {
 export const CardGuideCanvas = memo(({
   canvasRef,
   scannerStatus,
-  autoProgress = 0,
   isSuccessVerified = false,
   isVerifying = false,
 }: ICardGuideCanvasProps) => {
