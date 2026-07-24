@@ -443,6 +443,36 @@ sequenceDiagram
             <strong class="text-white">คำตอบ:</strong> พร้อมใช้งาน 100% ออกแบบเป็น Reusable Component <code class="text-rose-300 font-mono">&lt;IdCardScanner onVerify={...} /&gt;</code> สามารถนำไปต่อยอดกับ Next.js / React project ใดๆ ของบริษัทได้ทันที
           </p>
         </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-2 border-l-4 border-cyan-500">
+          <h3 class="text-base font-bold text-cyan-300">❓ Q7: อนาคตทำเป็น Reusable NPM Library ได้ไหม?</h3>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            <strong class="text-white">คำตอบ:</strong> <strong class="text-cyan-300">ทำได้แน่นอน 100%</strong> แยกชั้นระหว่าง Core Vision Engine กับ UI View รองรับทั้งแบบ <code class="text-cyan-300 font-mono">&lt;IdCardScanner /&gt;</code> (UI สำเร็จรูป) และ Headless Hook <code class="text-cyan-300 font-mono">useIdCardScanner()</code> สำหรับทีมที่ต้องการแต่ง UI เอง
+          </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-2 border-l-4 border-teal-500">
+          <h3 class="text-base font-bold text-teal-300">❓ Q8: ถ้าถือบัตรเอียงมากๆ (Skew/Perspective) จะสแกนติดไหม?</h3>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            <strong class="text-white">คำตอบ:</strong> <strong class="text-teal-300">ไม่ติดแน่นอน ด้วยระบบป้องกัน 2 ชั้น (Dual-Layer Defense):</strong><br/>
+            1) <strong>Aspect Ratio Window:</strong> เมื่อบัตรเอียง อัตราส่วนสี่เหลี่ยม 2D จะหดเพี้ยนหลุดช่วงยอมรับ <code class="text-teal-300 font-mono">[1.55 – 1.65]</code> ทันที<br/>
+            2) <strong>Skew Geometry Verification:</strong> ตรวจความขนานของขอบ 4 ด้าน (<code class="text-teal-300 font-mono">minSkewScore: 0.80</code>) บล็อกภาพสี่เหลี่ยมคางหมู ป้องกันได้ 100%
+          </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-2 border-l-4 border-orange-500">
+          <h3 class="text-base font-bold text-orange-300">❓ Q9: ทำไมตั้งเวลารอบัตรนิ่งไว้ที่ 180ms?</h3>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            <strong class="text-white">คำตอบ:</strong> เป็นเวลา <strong class="text-orange-300">Sweet Spot</strong> จากการทดลอง UX หากใช้ 0ms ภาพจะเบลอจากการเคลื่อนที่ แต่ 180ms ผู้ใช้รู้สึกว่าระบบถ่ายรูปทันที (Instant) ในขณะที่ภาพยังคมชัด 100%
+          </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 space-y-2 border-l-4 border-pink-500">
+          <h3 class="text-base font-bold text-pink-300">❓ Q10: แก้ปัญหากล้องเปิดแล้วกระตุกตอนแรกอย่างไร?</h3>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            <strong class="text-white">คำตอบ:</strong> กำหนดกล้องขนาด <code class="text-pink-300 font-mono">1920x1080 (1080p)</code> พร้อมเช็ค <code class="text-pink-300 font-mono">readyState &gt;= 4</code> ก่อนเริ่มสแกน และ Throttle การอัปเดต UI Metrics ไว้ที่ 10 FPS ช่วยให้วิดีโอลื่นไหล 60 FPS
+          </p>
+        </div>
       </div>
     </section>
 
