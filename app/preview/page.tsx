@@ -2,12 +2,48 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import imageCompression from "browser-image-compression";
 
 interface IImageVariant {
   base64: string;
   sizeKb: string;
 }
+
+const resizeToExactMaxDim = (
+  source: string,
+  maxDim: number,
+  fileType: string,
+  quality: number,
+): Promise<{ blob: Blob; dataUrl: string }> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = maxDim / Math.max(img.naturalWidth, img.naturalHeight);
+      const width = Math.round(img.naturalWidth * scale);
+      const height = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas 2D context not available"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Failed to encode image"));
+            return;
+          }
+          resolve({ blob, dataUrl: canvas.toDataURL(fileType, quality) });
+        },
+        fileType,
+        quality,
+      );
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = source;
+  });
 
 const PreviewPage = () => {
   const router = useRouter();
@@ -36,35 +72,21 @@ const PreviewPage = () => {
     const processCompression = async () => {
       try {
         setIsCompressing(true);
-        const originalFile = await imageCompression.getFilefromDataUrl(
-          stored,
-          "captured_id_card.png",
-        );
 
-        // Set 1: Detection (imgSize: 1200, compression: 50%)
-        const detectionFile = await imageCompression(originalFile, {
-          maxWidthOrHeight: 1200,
-          initialQuality: 0.50,
-          fileType: "image/png",
-          useWebWorker: true,
-        });
-        const detectionBase64 = await imageCompression.getDataUrlFromFile(detectionFile);
+        // Set 1: Detection (imgSize: 1200 exact, compression: 50% JPEG)
+        const { blob: detectionBlob, dataUrl: detectionBase64 } =
+          await resizeToExactMaxDim(stored, 1200, "image/jpeg", 0.5);
         setDetectionVariant({
           base64: detectionBase64,
-          sizeKb: (detectionFile.size / 1024).toFixed(1),
+          sizeKb: (detectionBlob.size / 1024).toFixed(1),
         });
 
-        // Set 2: Analysis (imgSize: 960, compression: 80%)
-        const analysisFile = await imageCompression(originalFile, {
-          maxWidthOrHeight: 960,
-          initialQuality: 0.80,
-          fileType: "image/png",
-          useWebWorker: true,
-        });
-        const analysisBase64 = await imageCompression.getDataUrlFromFile(analysisFile);
+        // Set 2: Analysis (imgSize: 960 exact, compression: 80% JPEG)
+        const { blob: analysisBlob, dataUrl: analysisBase64 } =
+          await resizeToExactMaxDim(stored, 960, "image/jpeg", 0.8);
         setAnalysisVariant({
           base64: analysisBase64,
-          sizeKb: (analysisFile.size / 1024).toFixed(1),
+          sizeKb: (analysisBlob.size / 1024).toFixed(1),
         });
       } catch (err) {
         console.error("[Preview] Compression error:", err);
@@ -81,11 +103,14 @@ const PreviewPage = () => {
     router.push("/");
   };
 
-  const onCopyPng = async (base64Data: string, key: string) => {
+  const onCopyImage = async (base64Data: string, key: string) => {
     try {
+      const mimeType = base64Data.slice(5, base64Data.indexOf(";"));
       const res = await fetch(base64Data);
       const blob = await res.blob();
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      await navigator.clipboard.write([
+        new ClipboardItem({ [mimeType]: blob }),
+      ]);
       setCopiedState(`${key}_png`);
       setTimeout(() => setCopiedState(null), 2000);
     } catch {
@@ -174,12 +199,12 @@ const PreviewPage = () => {
               <div>
                 <h2 className="text-sm font-semibold text-amber-300">🔍 Detection Format</h2>
                 <p className="text-xs font-mono text-slate-400">
-                  Size: 1200px • Compression: 50%
+                  Size: 1200px (exact) • Compression: 50%
                   {detectionVariant ? ` (${detectionVariant.sizeKb} KB)` : ""}
                 </p>
               </div>
               <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-mono font-medium text-amber-300">
-                PNG
+                JPEG
               </span>
             </div>
 
@@ -187,13 +212,13 @@ const PreviewPage = () => {
               <button
                 type="button"
                 disabled={isCompressing || !detectionVariant}
-                onClick={() => detectionVariant && void onCopyPng(detectionVariant.base64, "detection")}
+                onClick={() => detectionVariant && void onCopyImage(detectionVariant.base64, "detection")}
                 className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs font-medium transition-all hover:bg-white/10 active:scale-[.98] disabled:opacity-50"
               >
                 {copiedState === "detection_png" ? (
-                  <span className="truncate font-semibold text-emerald-400">✓ คัดลอก PNG แล้ว</span>
+                  <span className="truncate font-semibold text-emerald-400">✓ คัดลอกรูปแล้ว</span>
                 ) : (
-                  <span>คัดลอกรูป (PNG)</span>
+                  <span>คัดลอกรูป (JPEG)</span>
                 )}
               </button>
 
@@ -218,12 +243,12 @@ const PreviewPage = () => {
               <div>
                 <h2 className="text-sm font-semibold text-cyan-300">🔬 Analysis Format</h2>
                 <p className="text-xs font-mono text-slate-400">
-                  Size: 960px • Compression: 80%
+                  Size: 960px (exact) • Compression: 80%
                   {analysisVariant ? ` (${analysisVariant.sizeKb} KB)` : ""}
                 </p>
               </div>
               <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-mono font-medium text-cyan-300">
-                PNG
+                JPEG
               </span>
             </div>
 
@@ -231,13 +256,13 @@ const PreviewPage = () => {
               <button
                 type="button"
                 disabled={isCompressing || !analysisVariant}
-                onClick={() => analysisVariant && void onCopyPng(analysisVariant.base64, "analysis")}
+                onClick={() => analysisVariant && void onCopyImage(analysisVariant.base64, "analysis")}
                 className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs font-medium transition-all hover:bg-white/10 active:scale-[.98] disabled:opacity-50"
               >
                 {copiedState === "analysis_png" ? (
-                  <span className="truncate font-semibold text-emerald-400">✓ คัดลอก PNG แล้ว</span>
+                  <span className="truncate font-semibold text-emerald-400">✓ คัดลอกรูปแล้ว</span>
                 ) : (
-                  <span>คัดลอกรูป (PNG)</span>
+                  <span>คัดลอกรูป (JPEG)</span>
                 )}
               </button>
 
