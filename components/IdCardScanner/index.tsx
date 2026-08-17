@@ -12,7 +12,7 @@ import cn from '@/components/cn'
 
 export type IVerifyResult =
   | { success: true }
-  | { message: string; success: false; type: 'warning' }
+  | { message: string; success: false; type: 'failed' | 'warning' }
 
 interface IIdCardScannerProps {
   onBack: () => void
@@ -192,6 +192,18 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
           </p>
         </div>
       </div>
+
+      {scanState.phase === 'verifying' && (
+        <div className="pointer-events-none absolute inset-0 z-[35] grid place-items-center">
+          <div
+            className="flex items-center gap-3 rounded-full bg-black/60 px-5 py-3"
+            style={{ transform: lockedRotation ? `rotate(${lockedRotation}deg)` : undefined }}
+          >
+            <div className="size-5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+            <span className="font-graphik-medium text-sm text-white">กำลังตรวจสอบบัตร…</span>
+          </div>
+        </div>
+      )}
 
       {verificationFailed && (
         <ScanFailedModal
