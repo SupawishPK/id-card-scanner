@@ -147,6 +147,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       <IdCardScanGuide
         guideCanvasRef={guideCanvasRef}
         isSuccess={isSuccess}
+        isTransitioning={isTransitioning}
         isViewportLandscape={isViewportLandscape}
         orientation={mode}
         scannerStatus={scannerStatus}

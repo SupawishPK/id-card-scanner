@@ -11,6 +11,7 @@ import cn from '@/components/cn'
 interface IIdCardScanGuideProps {
   guideCanvasRef: RefObject<HTMLCanvasElement | null>
   isSuccess?: boolean
+  isTransitioning?: boolean
   isViewportLandscape?: boolean
   orientation: ScreenOrientationMode
   scannerStatus: IScannerStatus
@@ -22,6 +23,7 @@ const LANDSCAPE_ASPECT_RATIO = String(1 / ID_CARD_ASPECT_RATIO)
 const IdCardScanGuide = ({
   guideCanvasRef,
   isSuccess = false,
+  isTransitioning = false,
   isViewportLandscape = false,
   orientation,
   scannerStatus,
@@ -39,11 +41,13 @@ const IdCardScanGuide = ({
       {/* Guide frame — centered between header and footer */}
       <div
         className={cn(
-          'relative shrink-0 rounded-2xl transition-[width,height,transform] duration-300 ease-in-out',
+          'relative shrink-0 rounded-2xl transition-[width,height,transform,opacity] duration-300 ease-in-out',
           !isLandscape && 'w-4/5 max-w-sm',
           isViewportLandscape && 'h-[72dvh] w-auto max-w-none',
           // 32dvh keeps the rotated AABB (~270px) clear of the 40px/56px header+footer strips
           isLockedLandscape && 'h-[32dvh] w-auto',
+          // The guideline must not bleed through the rotation transition veil
+          isTransitioning && 'opacity-0',
         )}
         style={{
           aspectRatio: isViewportLandscape ? LANDSCAPE_ASPECT_RATIO : String(ID_CARD_ASPECT_RATIO),

@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react'
 
+import cn from '@/components/cn'
+
 interface ICameraAccessOverlayProps {
   cameraError?: string
   cameraErrorType?: 'permission-denied' | 'generic'
@@ -12,8 +14,9 @@ interface ICameraAccessOverlayProps {
   onRetryCamera: () => void
 }
 
-interface IPermissionModalProps {
+interface IFullScreenPermissionProps {
   body: ReactNode
+  icon: 'camera' | 'alert'
   lockedRotation: 0 | 90 | -90
   onPrimary: () => void
   onSecondary: () => void
@@ -22,34 +25,60 @@ interface IPermissionModalProps {
   title: string
 }
 
-const PermissionModal = ({
+const CameraIcon = () => (
+  <svg
+    aria-hidden="true"
+    className="size-7"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.8}
+    viewBox="0 0 24 24"
+  >
+    <path
+      d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2l1.5-2.5h8L17.5 7h2A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-9Z"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+)
+
+const FullScreenPermission = ({
   body,
+  icon,
   lockedRotation,
   onPrimary,
   onSecondary,
   primaryLabel,
   secondaryLabel,
   title,
-}: IPermissionModalProps) => (
-  <div className="absolute inset-0 z-40 grid place-items-center bg-[rgba(0,0,0,0.429)] px-4">
+}: IFullScreenPermissionProps) => (
+  <div className="absolute inset-0 z-40 grid place-items-center bg-slate-950 px-8 text-center text-white">
     <div
-      className="w-full max-w-[343px] rounded-[32px] bg-[#FDFDFD] shadow-[0px_2px_12px_rgba(8,8,8,0.18)]"
+      className="flex max-w-sm flex-col items-center"
       style={{ transform: lockedRotation ? `rotate(${lockedRotation}deg)` : undefined }}
     >
-      <h2 className="px-4 pb-1 pt-4 text-center font-graphik-medium text-[20px] leading-8 text-[#030303]">
-        {title}
-      </h2>
-      <div className="px-4 py-3 text-center text-base leading-6 text-[#454545]">{body}</div>
-      <div className="flex gap-4 px-4 pb-4 pt-3">
+      <div
+        aria-hidden
+        className={cn(
+          'mx-auto mb-4 grid size-14 place-items-center rounded-full',
+          icon === 'alert' ? 'bg-rose-500/15 text-2xl' : 'bg-white/10 text-slate-200',
+        )}
+      >
+        {icon === 'alert' ? '!' : <CameraIcon />}
+      </div>
+      <h2 className="font-graphik-medium text-lg text-white">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+      <div className="mt-6 flex gap-4">
         <button
-          className="h-12 flex-1 rounded-full border border-[#FF5A00] bg-[#FDFDFD] font-graphik-medium text-base leading-6 text-[#FF5A00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF5A00]"
+          className="h-12 rounded-full border border-[#FF5A00] bg-transparent px-8 font-graphik-medium text-base leading-6 text-[#FF5A00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF5A00]"
           onClick={onSecondary}
           type="button"
         >
           {secondaryLabel}
         </button>
         <button
-          className="h-12 flex-1 rounded-full bg-[#FF5A00] font-graphik-medium text-base leading-6 text-[#FFFCFA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF5A00]"
+          className="h-12 rounded-full bg-[#FF5A00] px-8 font-graphik-medium text-base leading-6 text-[#FFFCFA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF5A00]"
           onClick={onPrimary}
           type="button"
         >
@@ -72,7 +101,7 @@ const CameraAccessOverlay = ({
 
   if (cameraState === 'idle') {
     return (
-      <PermissionModal
+      <FullScreenPermission
         body={
           <>
             เพื่อสแกนบัตรประชาชนให้รวดเร็วและแม่นยำ
@@ -80,6 +109,7 @@ const CameraAccessOverlay = ({
             ระบบจะไม่จัดเก็บภาพโดยไม่ได้รับอนุญาต
           </>
         }
+        icon="camera"
         lockedRotation={lockedRotation}
         onPrimary={onRetryCamera}
         onSecondary={onBack}
@@ -92,19 +122,20 @@ const CameraAccessOverlay = ({
 
   if (cameraState === 'error') {
     return (
-      <PermissionModal
+      <FullScreenPermission
         body={
           <>
             {cameraError}
             {cameraErrorType === 'permission-denied' && (
-              <p className="mt-2 text-sm leading-5">
+              <span className="mt-2 block text-xs leading-5 text-slate-400">
                 กรุณาไปที่{' '}
-                <span className="font-graphik-medium">ตั้งค่า &gt; ความเป็นส่วนตัว &gt; กล้อง</span>{' '}
+                <span className="font-graphik-medium text-slate-300">ตั้งค่า &gt; ความเป็นส่วนตัว &gt; กล้อง</span>{' '}
                 แล้วอนุญาตให้เว็บไซต์นี้เข้าถึงกล้อง จากนั้นกลับมาลองใหม่
-              </p>
+              </span>
             )}
           </>
         }
+        icon="alert"
         lockedRotation={lockedRotation}
         onPrimary={onRetryCamera}
         onSecondary={onBack}
