@@ -118,7 +118,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         <div
           className={cn(
             'flex shrink-0 items-center gap-3 transition-transform duration-300 ease-in-out',
-            isViewportLandscape && 'pl-3',
+            isViewportLandscape && 'w-full pl-3',
             isLockedLandscape && 'w-dvh justify-start py-3 pl-3',
             isLockedLandscape && isLandscapeLeft && 'rotate-90',
             isLockedLandscape && isLandscapeRight && '-rotate-90',
