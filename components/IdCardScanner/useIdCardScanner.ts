@@ -1,0 +1,295 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import useCameraStream from './camera/useCameraStream'
+import type { IScannerStatus } from './detection/detectIdCard'
+import useIdCardDetection from './detection/useIdCardDetection'
+import ID_CARD_SCANNER_CONFIG from './idCardScannerConfig'
+import { mapGuideRectToVideoRect, expandCaptureRect, exportVideoRectAsJpeg, type IVideoRect } from './videoRect'
+
+type IIdCardScanEvent =
+  | { type: 'CAMERA_READY' }
+  | { errorMessage: string; type: 'CAMERA_ERROR' }
+  | { status: IScannerStatus; type: 'SCANNER_STATUS_UPDATED' }
+  | { type: 'CAPTURE_COMPLETE' }
+  | { type: 'VERIFY_SUCCESS' }
+  | { errorMessage: string; type: 'VERIFY_FAILED' }
+  | { message: string; type: 'VERIFY_WARNING' }
+  | { type: 'WARNING_TIMEOUT_COMPLETE' }
+  | { type: 'CAPTURE_RESET' }
+
+interface IUseIdCardScannerOptions {
+  onScanSuccess: () => void
+  verifyIdCardImage: (
+    capturedImage: string,
+  ) => Promise<{ success: true } | { message: string; success: false; type: 'failed' | 'warning' }>
+}
+
+const nextScanState = (state: IIdCardScanState, event: IIdCardScanEvent): IIdCardScanState => {
+  switch (state.phase) {
+    case 'opening-camera':
+      switch (event.type) {
+        case 'CAMERA_READY':
+          return { phase: 'detecting', scannerStatus: 'searching' }
+        case 'CAMERA_ERROR':
+          return { phase: 'camera-error', errorMessage: event.errorMessage }
+        default:
+          return state
+      }
+
+    case 'camera-error':
+      switch (event.type) {
+        case 'CAMERA_READY':
+          return { phase: 'detecting', scannerStatus: 'searching' }
+        default:
+          return state
+      }
+
+    case 'detecting':
+      switch (event.type) {
+        case 'SCANNER_STATUS_UPDATED':
+          return { phase: 'detecting', scannerStatus: event.status }
+        case 'CAPTURE_COMPLETE':
+          return { phase: 'verifying' }
+        case 'CAMERA_ERROR':
+          return { phase: 'camera-error', errorMessage: event.errorMessage }
+        default:
+          return state
+      }
+
+    case 'verifying':
+      switch (event.type) {
+        case 'VERIFY_SUCCESS':
+          return { phase: 'success' }
+        case 'VERIFY_WARNING':
+          return { phase: 'warning', message: event.message }
+        case 'VERIFY_FAILED':
+          return { phase: 'failed', errorMessage: event.errorMessage }
+        default:
+          return state
+      }
+
+    case 'warning':
+      switch (event.type) {
+        case 'WARNING_TIMEOUT_COMPLETE':
+          return { phase: 'detecting', scannerStatus: 'searching' }
+        case 'CAMERA_ERROR':
+          return { phase: 'camera-error', errorMessage: event.errorMessage }
+        default:
+          return state
+      }
+
+    case 'failed':
+      switch (event.type) {
+        case 'CAMERA_ERROR':
+          return { phase: 'camera-error', errorMessage: event.errorMessage }
+        default:
+          return state
+      }
+
+    case 'success':
+      return state
+  }
+}
+
+type IIdCardScanState =
+  | { phase: 'opening-camera' }
+  | { errorMessage: string; phase: 'camera-error' }
+  | { phase: 'detecting'; scannerStatus: IScannerStatus }
+  | { phase: 'verifying' }
+  | { message: string; phase: 'warning' }
+  | { errorMessage: string; phase: 'failed' }
+  | { phase: 'success' }
+
+const useIdCardScanner = ({ onScanSuccess, verifyIdCardImage }: IUseIdCardScannerOptions) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const guideCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  const [scanState, setScanState] = useState<IIdCardScanState>({ phase: 'opening-camera' })
+  const [scannerStatus, setScannerStatus] = useState<IScannerStatus>('searching')
+  const capturedRef = useRef(false)
+  const capturedImageRef = useRef<string | undefined>(undefined)
+  const cooldownUntilRef = useRef(0)
+  const guideBoundsRef = useRef<IVideoRect | undefined>(undefined)
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const verifyingRef = useRef(false)
+  const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const dispatch = useCallback((event: IIdCardScanEvent) => {
+    setScanState((prevState) => nextScanState(prevState, event))
+  }, [])
+
+  const { cameraState, cameraError, cameraErrorType, retryCamera } = useCameraStream(videoRef)
+
+  const onDetectionUpdate = useCallback(
+    (status: IScannerStatus) => {
+      setScannerStatus(status)
+      dispatch({ type: 'SCANNER_STATUS_UPDATED', status })
+    },
+    [dispatch],
+  )
+
+  const { resetDetection } = useIdCardDetection({
+    guideRef: guideCanvasRef,
+    isEnabled: scanState.phase === 'detecting' && cameraState === 'ready',
+    videoRef,
+    onDetectionUpdate,
+  })
+
+  useEffect(() => {
+    if (cameraState === 'ready') {
+      dispatch({ type: 'CAMERA_READY' })
+    } else if (cameraState === 'error' && cameraError) {
+      dispatch({ type: 'CAMERA_ERROR', errorMessage: cameraError })
+    }
+  }, [cameraState, cameraError, dispatch])
+
+  useEffect(() => {
+    const phase = scanState.phase
+    const now = Date.now()
+
+    if (
+      phase === 'detecting' &&
+      scannerStatus === 'stable' &&
+      !capturedRef.current &&
+      !verifyingRef.current &&
+      now > cooldownUntilRef.current
+    ) {
+      const video = videoRef.current
+      const guide = guideCanvasRef.current
+      if (!video || !guide) return
+
+      const bounds = mapGuideRectToVideoRect(video, guide)
+      if (!bounds) return
+
+      guideBoundsRef.current = bounds
+
+      const paddedRect = expandCaptureRect(bounds, video)
+      const capturedImage = exportVideoRectAsJpeg(video, paddedRect)
+      if (!capturedImage) return
+
+      capturedRef.current = true
+      capturedImageRef.current = capturedImage
+      dispatch({ type: 'CAPTURE_COMPLETE' })
+    }
+  }, [scanState, scannerStatus, dispatch])
+
+  useEffect(() => {
+    if (scanState.phase !== 'verifying') return
+
+    const capturedImage = capturedImageRef.current
+    if (!capturedImage) return
+
+    if (verifyingRef.current) return
+
+    verifyingRef.current = true
+    let isCancelled = false
+
+    const submitForVerification = async () => {
+      try {
+        const result = await verifyIdCardImage(capturedImage)
+        if (isCancelled) return
+
+        if (result.success) {
+          sessionStorage.setItem('captured_id_card', capturedImage)
+          dispatch({ type: 'VERIFY_SUCCESS' })
+          successTimerRef.current = setTimeout(() => {
+            onScanSuccess()
+          }, ID_CARD_SCANNER_CONFIG.successFeedbackDurationMs)
+        } else if (result.type === 'warning') {
+          cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
+          resetDetection()
+          capturedRef.current = false
+          capturedImageRef.current = undefined
+          verifyingRef.current = false
+          dispatch({
+            type: 'VERIFY_WARNING',
+            message: result.message,
+          })
+        } else {
+          dispatch({ type: 'VERIFY_FAILED', errorMessage: result.message })
+        }
+      } catch {
+        if (isCancelled) return
+        cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
+        resetDetection()
+        capturedRef.current = false
+        capturedImageRef.current = undefined
+        verifyingRef.current = false
+        dispatch({
+          type: 'VERIFY_FAILED',
+          errorMessage: 'ระบบไม่สามารถตรวจสอบบัตรประชาชนได้ กรุณาลองใหม่อีกครั้ง',
+        })
+      }
+    }
+
+    void submitForVerification()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [scanState.phase, dispatch, verifyIdCardImage, onScanSuccess, resetDetection])
+
+  // Verify timeout: if the API hangs we surface an error instead of leaving
+  // the user stuck on the spinner forever.
+  useEffect(() => {
+    if (scanState.phase !== 'verifying') return
+
+    verifyTimerRef.current = setTimeout(() => {
+      verifyingRef.current = false
+      cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
+      resetDetection()
+      capturedRef.current = false
+      capturedImageRef.current = undefined
+      dispatch({
+        type: 'VERIFY_FAILED',
+        errorMessage: 'ระบบไม่สามารถตรวจสอบบัตรประชาชนได้ กรุณาลองใหม่อีกครั้ง',
+      })
+    }, ID_CARD_SCANNER_CONFIG.verifyTimeoutMs)
+
+    return () => {
+      if (verifyTimerRef.current !== undefined) {
+        clearTimeout(verifyTimerRef.current)
+        verifyTimerRef.current = undefined
+      }
+    }
+  }, [scanState.phase, dispatch, resetDetection])
+
+  useEffect(() => {
+    if (scanState.phase === 'warning') {
+      errorTimerRef.current = setTimeout(() => {
+        dispatch({ type: 'WARNING_TIMEOUT_COMPLETE' })
+      }, ID_CARD_SCANNER_CONFIG.retryCooldownMs)
+
+      return () => {
+        if (errorTimerRef.current !== undefined) {
+          clearTimeout(errorTimerRef.current)
+          errorTimerRef.current = undefined
+        }
+      }
+    }
+  }, [scanState.phase, dispatch])
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== undefined) clearTimeout(successTimerRef.current)
+      if (errorTimerRef.current !== undefined) clearTimeout(errorTimerRef.current)
+      if (verifyTimerRef.current !== undefined) clearTimeout(verifyTimerRef.current)
+    }
+  }, [])
+
+  return {
+    cameraError,
+    cameraErrorType,
+    cameraState,
+    guideCanvasRef,
+    retryCamera,
+    scannerStatus,
+    scanState,
+    videoRef,
+  }
+}
+
+export default useIdCardScanner

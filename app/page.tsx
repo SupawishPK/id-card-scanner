@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback } from "react";
-import { IdCardScanner, type IVerifyResult } from "@/components/id-card-scanner";
+import IdCardScanner, { IVerifyResult } from "@/components/IdCardScanner";
 
 const Home = () => {
-  const onVerify = useCallback(async (capturedImage: string): Promise<IVerifyResult> => {
+  const onVerify = async (capturedImage: string): Promise<IVerifyResult> => {
     console.log("[App/API] 🛰️ Verifying ID Card photo in background...");
 
     // Mock: simulate API response delay between 1000 - 1500 ms
@@ -17,10 +17,8 @@ const Home = () => {
       console.log("[App/API] ❌ Verification result: FAIL (50/50 mock rate)");
       return {
         success: false,
-        error: {
-          title: "ภาพไม่ชัดเจน",
-          description: "ระบบไม่สามารถอ่านข้อมูลบนบัตรได้ครบถ้วน กรุณาถ่ายใหม่",
-        },
+        message: "ภาพไม่ชัดเจน",
+        type: 'warning',
       };
     }
 
@@ -28,7 +26,7 @@ const Home = () => {
     console.log("[App/API] ✅ Verification result: SUCCESS!");
     sessionStorage.setItem("captured_id_card", capturedImage);
     return { success: true };
-  }, []);
+  }
 
   const onBack = useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -37,8 +35,10 @@ const Home = () => {
   }, []);
 
   return (
-    <main className="min-h-dvh bg-slate-950 sm:grid sm:place-items-center sm:p-6">
-      <IdCardScanner onBack={onBack} onVerify={onVerify} />
+    <main className="min-h-dvh bg-slate-950 lg:grid lg:place-items-center lg:p-6">
+      <IdCardScanner onBack={onBack} onVerify={onVerify} onSuccess={function (): void {
+        throw new Error("Function not implemented.");
+      }} />
     </main>
   );
 };
