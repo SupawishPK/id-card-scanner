@@ -17,7 +17,8 @@ interface IIdCardScanGuideProps {
   verificationWarning?: string
 }
 
-const LANDSCAPE_ASPECT_RATIO = '3 / 2'
+// Landscape frame mirrors the card ratio (portrait 53.98/85.6 → landscape 85.6/53.98 ≈ 3:2)
+const LANDSCAPE_ASPECT_RATIO = String(1 / ID_CARD_ASPECT_RATIO)
 
 const resolveIndicator = (isSuccess: boolean) => {
   if (isSuccess) {

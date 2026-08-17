@@ -16,11 +16,14 @@ const SENSOR_QUADRANT_TOLERANCE_DEG = 35
 const SENSOR_FLAT_THRESHOLD_DEG = 20
 const SENSOR_COMMIT_DELAY_MS = 250
 
+// Index = snapped angle / 90. MDN convention: gamma increases toward +90° when the
+// device is tipped to the RIGHT (right edge lower) and toward -90° when tipped left.
+// Device CW 90° (landscape-right) → gamma +90; device CCW 90° (landscape-left) → gamma -90.
 const SENSOR_MODES: readonly ScreenOrientationMode[] = [
   'portrait',
-  'landscape-left',
-  'upside-down',
   'landscape-right',
+  'upside-down',
+  'landscape-left',
 ]
 
 const viewportAngleToMode = (angle: number): ScreenOrientationMode => {
@@ -53,7 +56,8 @@ const readViewport = (): { angle: number; isLandscape: boolean } => {
  * Maps accelerometer tilt (beta/gamma) to the nearest screen quadrant.
  * Returns null when the reading is ambiguous (device flat, or in a diagonal dead zone).
  * beta: tilt of the device's top edge from horizontal — 90° upright, -90° upside down.
- * gamma: tilt of the device's right edge from horizontal — +90° when the right edge points up.
+ * gamma: tilt of the device's left-right axis — +90° tipped right (device CW, landscape-right),
+ * -90° tipped left (device CCW, landscape-left).
  */
 const resolveSensorMode = (beta: number, gamma: number): ScreenOrientationMode | null => {
   // Flat on a surface — gravity is perpendicular to the screen, in-plane direction is undefined.
