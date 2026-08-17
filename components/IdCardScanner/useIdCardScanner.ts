@@ -91,6 +91,8 @@ const nextScanState = (state: IIdCardScanState, event: IIdCardScanEvent): IIdCar
       switch (event.type) {
         case 'CAMERA_ERROR':
           return { phase: 'camera-error', errorMessage: event.errorMessage }
+        case 'CAPTURE_RESET':
+          return { phase: 'detecting', scannerStatus: 'searching' }
         default:
           return state
       }
@@ -144,6 +146,15 @@ const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardIm
     videoRef,
     onDetectionUpdate,
   })
+
+  const retryScan = useCallback(() => {
+    capturedRef.current = false
+    capturedImageRef.current = undefined
+    verifyingRef.current = false
+    cooldownUntilRef.current = 0
+    resetDetection()
+    dispatch({ type: 'CAPTURE_RESET' })
+  }, [dispatch, resetDetection])
 
   useEffect(() => {
     if (cameraState === 'ready') {
@@ -293,6 +304,7 @@ const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardIm
     cameraState,
     guideCanvasRef,
     retryCamera,
+    retryScan,
     scannerStatus,
     scanState,
     videoRef,
