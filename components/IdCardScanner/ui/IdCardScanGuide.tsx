@@ -42,7 +42,8 @@ const IdCardScanGuide = ({
           'relative shrink-0 rounded-2xl transition-[width,height,transform] duration-300 ease-in-out',
           !isLandscape && 'w-4/5 max-w-sm',
           isViewportLandscape && 'h-[72dvh] w-auto max-w-none',
-          isLockedLandscape && 'h-[42dvh] w-auto',
+          // 32dvh keeps the rotated AABB (~270px) clear of the 40px/56px header+footer strips
+          isLockedLandscape && 'h-[32dvh] w-auto',
         )}
         style={{
           aspectRatio: isViewportLandscape ? LANDSCAPE_ASPECT_RATIO : String(ID_CARD_ASPECT_RATIO),

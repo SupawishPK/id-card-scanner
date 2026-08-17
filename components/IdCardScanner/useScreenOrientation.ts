@@ -12,6 +12,8 @@ export interface IScreenOrientationState {
   isLockedLandscape: boolean
   /** True while the device is physically rotating or the viewport is swapping — used to veil the video refit. */
   isTransitioning: boolean
+  /** True when the OS already rotated the layout 180° (auto-rotate ON, device upside-down) — the section flip must be skipped. */
+  isViewportUpsideDown: boolean
 }
 
 const SENSOR_QUADRANT_TOLERANCE_DEG = 35
@@ -73,7 +75,8 @@ const resolveSensorMode = (beta: number, gamma: number): ScreenOrientationMode |
   const angle = (Math.atan2(normalizedGamma, beta) * 180) / Math.PI
   const normalized = ((angle % 360) + 360) % 360
   const snappedIndex = Math.round(normalized / 90) % 4
-  const delta = Math.abs(normalized - snappedIndex * 90)
+  const rawDelta = Math.abs(normalized - snappedIndex * 90)
+  const delta = Math.min(rawDelta, 360 - rawDelta)
   if (delta > SENSOR_QUADRANT_TOLERANCE_DEG) return null
   return SENSOR_MODES[snappedIndex]
 }
@@ -138,7 +141,12 @@ const useSensorMode = (): ISensorState => {
 }
 
 const useScreenOrientation = (): IScreenOrientationState => {
-  const [viewport, setViewport] = useState(() => readViewport())
+  // SSR-safe initial value — readViewport() must not run during the first client
+  // render, otherwise the hydrated markup differs on landscape/upside-down devices.
+  const [viewport, setViewport] = useState<{ angle: number; isLandscape: boolean }>({
+    angle: 0,
+    isLandscape: false,
+  })
   const [isViewportTransitioning, setIsViewportTransitioning] = useState(false)
   const { isTransitioning: isSensorTransitioning, mode: sensorMode } = useSensorMode()
 
@@ -206,6 +214,7 @@ const useScreenOrientation = (): IScreenOrientationState => {
     isViewportLandscape: viewport.isLandscape,
     isLockedLandscape: isLandscape && !viewport.isLandscape,
     isTransitioning: isSensorTransitioning || isViewportTransitioning,
+    isViewportUpsideDown: viewportAngleToMode(viewport.angle) === 'upside-down',
   }
 }
 

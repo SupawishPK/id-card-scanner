@@ -64,16 +64,24 @@ const expandCaptureRect = (bounds: IVideoRect, video: HTMLVideoElement): IVideoR
   }
 }
 
-const exportVideoRectAsJpeg = (video: HTMLVideoElement, region: IVideoRect): string | null => {
+export type IExportRotation = 0 | 90 | 180 | 270
+
+/**
+ * rotation selects how the exported JPEG is rotated so it always reads as an
+ * upright portrait card. The region is axis-aligned in raw video pixels, which
+ * do not follow the UI's per-mode rotation, so each orientation mode needs its
+ * own value (default 270 = 90° CCW keeps the pre-existing portrait behavior).
+ */
+const exportVideoRectAsJpeg = (video: HTMLVideoElement, region: IVideoRect, rotation: IExportRotation = 270): string | null => {
+  const swapsAxes = rotation === 90 || rotation === 270
   const canvas = document.createElement('canvas')
-  canvas.width = Math.round(region.height)
-  canvas.height = Math.round(region.width)
+  canvas.width = Math.round(swapsAxes ? region.height : region.width)
+  canvas.height = Math.round(swapsAxes ? region.width : region.height)
   const context = canvas.getContext('2d')
   if (!context) return null
 
-  // NOTE: Rotate 90° CCW — source landscape region → portrait output
   context.translate(canvas.width / 2, canvas.height / 2)
-  context.rotate(-Math.PI / 2)
+  context.rotate((rotation * Math.PI) / 180)
   context.drawImage(
     video,
     region.x,

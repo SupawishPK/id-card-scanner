@@ -6,12 +6,15 @@ interface ICameraAccessOverlayProps {
   cameraError?: string
   cameraErrorType?: 'permission-denied' | 'generic'
   cameraState: string
+  /** Counter-rotation when auto-rotate is locked and the device is physically landscape. */
+  lockedRotation: 0 | 90 | -90
   onBack: () => void
   onRetryCamera: () => void
 }
 
 interface IPermissionModalProps {
   body: ReactNode
+  lockedRotation: 0 | 90 | -90
   onPrimary: () => void
   onSecondary: () => void
   primaryLabel: string
@@ -21,6 +24,7 @@ interface IPermissionModalProps {
 
 const PermissionModal = ({
   body,
+  lockedRotation,
   onPrimary,
   onSecondary,
   primaryLabel,
@@ -28,7 +32,10 @@ const PermissionModal = ({
   title,
 }: IPermissionModalProps) => (
   <div className="absolute inset-0 z-40 grid place-items-center bg-[rgba(0,0,0,0.429)] px-4">
-    <div className="w-full max-w-[343px] rounded-[32px] bg-[#FDFDFD] shadow-[0px_2px_12px_rgba(8,8,8,0.18)]">
+    <div
+      className="w-full max-w-[343px] rounded-[32px] bg-[#FDFDFD] shadow-[0px_2px_12px_rgba(8,8,8,0.18)]"
+      style={{ transform: lockedRotation ? `rotate(${lockedRotation}deg)` : undefined }}
+    >
       <h2 className="px-4 pb-1 pt-4 text-center font-graphik-medium text-[20px] leading-8 text-[#030303]">
         {title}
       </h2>
@@ -57,6 +64,7 @@ const CameraAccessOverlay = ({
   cameraState,
   cameraError,
   cameraErrorType,
+  lockedRotation,
   onBack,
   onRetryCamera,
 }: ICameraAccessOverlayProps) => {
@@ -72,6 +80,7 @@ const CameraAccessOverlay = ({
             ระบบจะไม่จัดเก็บภาพโดยไม่ได้รับอนุญาต
           </>
         }
+        lockedRotation={lockedRotation}
         onPrimary={onRetryCamera}
         onSecondary={onBack}
         primaryLabel="เปิดกล้อง"
@@ -96,6 +105,7 @@ const CameraAccessOverlay = ({
             )}
           </>
         }
+        lockedRotation={lockedRotation}
         onPrimary={onRetryCamera}
         onSecondary={onBack}
         primaryLabel="ลองเปิดกล้องอีกครั้ง"
@@ -107,7 +117,7 @@ const CameraAccessOverlay = ({
 
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-slate-950 px-8 text-center text-white">
-      <div role="status">
+      <div role="status" style={{ transform: lockedRotation ? `rotate(${lockedRotation}deg)` : undefined }}>
         <div className="mx-auto size-9 animate-spin rounded-full border-2 border-white/25 border-t-white" />
         <p className="mt-4 text-sm text-slate-300">กำลังเปิดกล้อง…</p>
       </div>

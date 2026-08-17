@@ -6,6 +6,7 @@ import CameraAccessOverlay from './ui/CameraAccessOverlay'
 import IdCardScanGuide from './ui/IdCardScanGuide'
 import useIdCardScanner from './useIdCardScanner'
 import useScreenOrientation from './useScreenOrientation'
+import type { IExportRotation } from './videoRect'
 import cn from '@/components/cn'
 
 export type IVerifyResult =
@@ -19,8 +20,27 @@ interface IIdCardScannerProps {
 }
 
 const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => {
+  const { mode, isViewportLandscape, isLockedLandscape, isTransitioning, isViewportUpsideDown } = useScreenOrientation()
+  const isPhysicallyUpsideDown = mode === 'upside-down'
+  // Skip the section flip when the OS already rotated the layout 180° (auto-rotate ON).
+  const isUpsideDown = isPhysicallyUpsideDown && !isViewportUpsideDown
+  const isLandscape = mode === 'landscape-left' || mode === 'landscape-right'
+  const isLandscapeLeft = mode === 'landscape-left'
+  const isLandscapeRight = mode === 'landscape-right'
+  const lockedRotation = isLockedLandscape ? (isLandscapeLeft ? 90 : -90) : 0
+  // Raw video pixels do not follow the UI's rotation — the export must undo each mode's
+  // on-screen rotation so the JPEG always reads as an upright portrait card.
+  const captureRotation: IExportRotation = isPhysicallyUpsideDown
+    ? 180
+    : isViewportLandscape
+      ? 0
+      : isLockedLandscape
+        ? (isLandscapeLeft ? 270 : 90)
+        : 270
+
   const { scanState, cameraState, cameraError, cameraErrorType, videoRef, guideCanvasRef, retryCamera, scannerStatus } =
     useIdCardScanner({
+      captureRotation,
       onScanSuccess: onSuccess,
       verifyIdCardImage: async (image: string) => {
         const result = await onVerify(image)
@@ -31,16 +51,16 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
   const isSuccess = scanState.phase === 'success'
   const verificationWarning = scanState.phase === 'warning' ? scanState.message : undefined
 
-  const { mode, isViewportLandscape, isLockedLandscape, isTransitioning } = useScreenOrientation()
-  const isUpsideDown = mode === 'upside-down'
-  const isLandscape = mode === 'landscape-left' || mode === 'landscape-right'
-  const isLandscapeLeft = mode === 'landscape-left'
-  const isLandscapeRight = mode === 'landscape-right'
-
   // Overlay layout changed without a viewport resize (locked-landscape counter-rotation) —
   // nudge listeners that cache frame geometry (e.g. detection ROI) to recompute.
+  // Delayed past the 300ms frame/header transitions so the cached rect is the settled one.
   useEffect(() => {
-    window.dispatchEvent(new Event('resize'))
+    const timer = window.setTimeout(() => {
+      window.dispatchEvent(new Event('resize'))
+    }, 350)
+    return () => {
+      window.clearTimeout(timer)
+    }
   }, [mode])
 
   return (
@@ -86,7 +106,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       >
         <div
           className={cn(
-            'flex items-center gap-3 transition-transform duration-300 ease-in-out',
+            'flex shrink-0 items-center gap-3 transition-transform duration-300 ease-in-out',
             isLockedLandscape && 'w-dvh justify-center py-3',
             isLockedLandscape && isLandscapeLeft && 'rotate-90',
             isLockedLandscape && isLandscapeRight && '-rotate-90',
@@ -114,7 +134,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
           </button>
           <h1
             className={cn(
-              'mb-0 font-graphik-medium text-white',
+              'mb-0 whitespace-nowrap font-graphik-medium text-white',
               isViewportLandscape && 'flex-1 text-center',
               isLandscape ? 'text-base' : 'text-xl',
             )}
@@ -140,7 +160,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
           isLockedLandscape && 'absolute inset-y-0 flex w-10 items-center justify-center p-0',
           isLockedLandscape && isLandscapeLeft && 'left-0',
           isLockedLandscape && isLandscapeRight && 'right-0',
-          verificationWarning ? 'bg-yellow-400 text-dark-2' : 'bg-black/30 text-white',
+          verificationWarning ? 'bg-yellow-400 text-slate-950' : 'bg-black/30 text-white',
           !verificationWarning && isLandscape && 'bg-[rgba(8,8,8,0.46)]',
         )}
       >
@@ -162,6 +182,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         cameraError={cameraError}
         cameraErrorType={cameraErrorType}
         cameraState={cameraState}
+        lockedRotation={lockedRotation}
         onBack={onBack}
         onRetryCamera={() => void retryCamera()}
       />

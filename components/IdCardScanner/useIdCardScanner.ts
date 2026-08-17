@@ -6,7 +6,13 @@ import useCameraStream from './camera/useCameraStream'
 import type { IScannerStatus } from './detection/detectIdCard'
 import useIdCardDetection from './detection/useIdCardDetection'
 import ID_CARD_SCANNER_CONFIG from './idCardScannerConfig'
-import { mapGuideRectToVideoRect, expandCaptureRect, exportVideoRectAsJpeg, type IVideoRect } from './videoRect'
+import {
+  mapGuideRectToVideoRect,
+  expandCaptureRect,
+  exportVideoRectAsJpeg,
+  type IExportRotation,
+  type IVideoRect,
+} from './videoRect'
 
 type IIdCardScanEvent =
   | { type: 'CAMERA_READY' }
@@ -20,6 +26,7 @@ type IIdCardScanEvent =
   | { type: 'CAPTURE_RESET' }
 
 interface IUseIdCardScannerOptions {
+  captureRotation?: IExportRotation
   onScanSuccess: () => void
   verifyIdCardImage: (
     capturedImage: string,
@@ -102,7 +109,7 @@ type IIdCardScanState =
   | { errorMessage: string; phase: 'failed' }
   | { phase: 'success' }
 
-const useIdCardScanner = ({ onScanSuccess, verifyIdCardImage }: IUseIdCardScannerOptions) => {
+const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardImage }: IUseIdCardScannerOptions) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const guideCanvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -167,14 +174,14 @@ const useIdCardScanner = ({ onScanSuccess, verifyIdCardImage }: IUseIdCardScanne
       guideBoundsRef.current = bounds
 
       const paddedRect = expandCaptureRect(bounds, video)
-      const capturedImage = exportVideoRectAsJpeg(video, paddedRect)
+      const capturedImage = exportVideoRectAsJpeg(video, paddedRect, captureRotation)
       if (!capturedImage) return
 
       capturedRef.current = true
       capturedImageRef.current = capturedImage
       dispatch({ type: 'CAPTURE_COMPLETE' })
     }
-  }, [scanState, scannerStatus, dispatch])
+  }, [scanState, scannerStatus, dispatch, captureRotation])
 
   useEffect(() => {
     if (scanState.phase !== 'verifying') return
