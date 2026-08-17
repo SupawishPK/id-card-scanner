@@ -83,7 +83,8 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
     }
 
     document.addEventListener('visibilitychange', visibilityChange)
-    void startCamera()
+    // Camera is started on user request only — the overlay shows an intro screen first
+    // so the native permission prompt appears in a proper user-gesture context.
 
     return () => {
       document.removeEventListener('visibilitychange', visibilityChange)

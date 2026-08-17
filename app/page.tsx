@@ -6,24 +6,6 @@ import IdCardScanner, { IVerifyResult } from "@/components/IdCardScanner";
 const Home = () => {
   const onVerify = async (capturedImage: string): Promise<IVerifyResult> => {
     console.log("[App/API] 🛰️ Verifying ID Card photo in background...");
-
-    // Mock: simulate API response delay between 1000 - 1500 ms
-    const delay = Math.floor(Math.random() * 500) + 1000;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    // Mock: 50/50 pass/fail rate
-    const roll = Math.random();
-    if (roll < 0.50) {
-      console.log("[App/API] ❌ Verification result: FAIL (50/50 mock rate)");
-      return {
-        success: false,
-        message: "ภาพไม่ชัดเจน",
-        type: 'warning',
-      };
-    }
-
-    // Success: store image
-    console.log("[App/API] ✅ Verification result: SUCCESS!");
     sessionStorage.setItem("captured_id_card", capturedImage);
     return { success: true };
   }
