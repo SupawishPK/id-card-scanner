@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import CameraAccessOverlay from './ui/CameraAccessOverlay'
 import IdCardScanGuide from './ui/IdCardScanGuide'
@@ -37,6 +37,25 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
   const isLandscapeLeft = mode === 'landscape-left'
   const isLandscapeRight = mode === 'landscape-right'
 
+  // Briefly hide the video while the viewport rotates — the video texture refits to the new
+  // element size asynchronously, so without this the old frame shows letterboxed for a moment.
+  const [isVideoTransitioning, setIsVideoTransitioning] = useState(false)
+  useEffect(() => {
+    let hideTimer: number | undefined
+    const onLayoutChange = () => {
+      setIsVideoTransitioning(true)
+      window.clearTimeout(hideTimer)
+      hideTimer = window.setTimeout(() => setIsVideoTransitioning(false), 250)
+    }
+    window.addEventListener('orientationchange', onLayoutChange)
+    window.addEventListener('resize', onLayoutChange)
+    return () => {
+      window.clearTimeout(hideTimer)
+      window.removeEventListener('orientationchange', onLayoutChange)
+      window.removeEventListener('resize', onLayoutChange)
+    }
+  }, [])
+
   // Overlay layout changed without a viewport resize (locked-landscape counter-rotation) —
   // nudge listeners that cache frame geometry (e.g. detection ROI) to recompute.
   useEffect(() => {
@@ -52,7 +71,10 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         ref={videoRef}
         aria-label="video feed from camera"
         autoPlay
-        className="absolute left-1/2 top-1/2 size-[max(100dvw,100dvh)] -translate-x-1/2 -translate-y-1/2 object-cover"
+        className={cn(
+          'absolute inset-0 size-full object-cover transition-opacity duration-200',
+          isVideoTransitioning && 'opacity-0',
+        )}
         disablePictureInPicture
         muted
         playsInline
@@ -147,6 +169,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         cameraError={cameraError}
         cameraErrorType={cameraErrorType}
         cameraState={cameraState}
+        onBack={onBack}
         onRetryCamera={() => void retryCamera()}
       />
     </section>
