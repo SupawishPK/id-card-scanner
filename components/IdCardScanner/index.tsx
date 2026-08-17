@@ -37,15 +37,15 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
   const isLandscapeLeft = mode === 'landscape-left'
   const isLandscapeRight = mode === 'landscape-right'
 
-  // Briefly hide the video while the viewport rotates — the video texture refits to the new
+  // Briefly veil the screen while the viewport rotates — the video texture refits to the new
   // element size asynchronously, so without this the old frame shows letterboxed for a moment.
-  const [isVideoTransitioning, setIsVideoTransitioning] = useState(false)
+  const [isScreenTransitioning, setIsScreenTransitioning] = useState(false)
   useEffect(() => {
     let hideTimer: number | undefined
     const onLayoutChange = () => {
-      setIsVideoTransitioning(true)
+      setIsScreenTransitioning(true)
       window.clearTimeout(hideTimer)
-      hideTimer = window.setTimeout(() => setIsVideoTransitioning(false), 250)
+      hideTimer = window.setTimeout(() => setIsScreenTransitioning(false), 450)
     }
     window.addEventListener('orientationchange', onLayoutChange)
     window.addEventListener('resize', onLayoutChange)
@@ -73,7 +73,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         autoPlay
         className={cn(
           'absolute inset-0 size-full object-cover transition-opacity duration-200',
-          isVideoTransitioning && 'opacity-0',
+          isScreenTransitioning && 'opacity-0',
         )}
         disablePictureInPicture
         muted
@@ -81,6 +81,21 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       />
 
       <div className="pointer-events-none absolute inset-0 bg-black/5" />
+
+      {/* Rotation transition veil — blurred loading screen masks the video texture refit */}
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-0 z-[35] grid place-items-center bg-[rgba(41,41,58,0.23)] backdrop-blur-md',
+          isScreenTransitioning
+            ? 'opacity-100 transition-opacity duration-150'
+            : 'opacity-0 transition-opacity duration-300',
+        )}
+      >
+        <div role="status">
+          <div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+          <p className="mt-3 text-sm text-white/80">กำลังปรับมุมมอง…</p>
+        </div>
+      </div>
 
       <header
         className={cn(
