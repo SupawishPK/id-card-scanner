@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 import CameraAccessOverlay from './ui/CameraAccessOverlay'
 import IdCardScanGuide from './ui/IdCardScanGuide'
@@ -31,30 +31,11 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
   const isSuccess = scanState.phase === 'success'
   const verificationWarning = scanState.phase === 'warning' ? scanState.message : undefined
 
-  const { mode, isViewportLandscape, isLockedLandscape } = useScreenOrientation()
+  const { mode, isViewportLandscape, isLockedLandscape, isTransitioning } = useScreenOrientation()
   const isUpsideDown = mode === 'upside-down'
   const isLandscape = mode === 'landscape-left' || mode === 'landscape-right'
   const isLandscapeLeft = mode === 'landscape-left'
   const isLandscapeRight = mode === 'landscape-right'
-
-  // Briefly veil the screen while the viewport rotates — the video texture refits to the new
-  // element size asynchronously, so without this the old frame shows letterboxed for a moment.
-  const [isScreenTransitioning, setIsScreenTransitioning] = useState(false)
-  useEffect(() => {
-    let hideTimer: number | undefined
-    const onLayoutChange = () => {
-      setIsScreenTransitioning(true)
-      window.clearTimeout(hideTimer)
-      hideTimer = window.setTimeout(() => setIsScreenTransitioning(false), 450)
-    }
-    window.addEventListener('orientationchange', onLayoutChange)
-    window.addEventListener('resize', onLayoutChange)
-    return () => {
-      window.clearTimeout(hideTimer)
-      window.removeEventListener('orientationchange', onLayoutChange)
-      window.removeEventListener('resize', onLayoutChange)
-    }
-  }, [])
 
   // Overlay layout changed without a viewport resize (locked-landscape counter-rotation) —
   // nudge listeners that cache frame geometry (e.g. detection ROI) to recompute.
@@ -73,7 +54,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         autoPlay
         className={cn(
           'absolute inset-0 size-full object-cover transition-opacity duration-200',
-          isScreenTransitioning && 'opacity-0',
+          isTransitioning && 'opacity-0',
         )}
         disablePictureInPicture
         muted
@@ -82,20 +63,17 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
 
       <div className="pointer-events-none absolute inset-0 bg-black/5" />
 
-      {/* Rotation transition veil — blurred loading screen masks the video texture refit */}
-      <div
-        className={cn(
-          'pointer-events-none absolute inset-0 z-[35] grid place-items-center bg-[rgba(41,41,58,0.23)] backdrop-blur-md',
-          isScreenTransitioning
-            ? 'opacity-100 transition-opacity duration-150'
-            : 'opacity-0 transition-opacity duration-300',
-        )}
-      >
-        <div role="status">
-          <div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-          <p className="mt-3 text-sm text-white/80">กำลังปรับมุมมอง…</p>
+      {/* Rotation transition veil — mounted early from the sensor so the video texture
+          refit during the viewport swap is never visible (no opacity transitions:
+          Safari's backdrop-filter breaks inside opacity animations) */}
+      {isTransitioning && (
+        <div className="pointer-events-none absolute inset-0 z-[35] grid place-items-center bg-[rgba(41,41,58,0.23)] backdrop-blur-md">
+          <div role="status">
+            <div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+            <p className="mt-3 text-sm text-white">กำลังปรับมุมมอง…</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <header
         className={cn(

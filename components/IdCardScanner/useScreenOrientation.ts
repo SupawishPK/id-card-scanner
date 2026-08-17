@@ -10,11 +10,14 @@ export interface IScreenOrientationState {
   isViewportLandscape: boolean
   /** Viewport stays portrait while the device is physically landscape (auto-rotate locked) — overlay UI must counter-rotate. */
   isLockedLandscape: boolean
+  /** True while the device is physically rotating or the viewport is swapping — used to veil the video refit. */
+  isTransitioning: boolean
 }
 
 const SENSOR_QUADRANT_TOLERANCE_DEG = 35
 const SENSOR_FLAT_THRESHOLD_DEG = 20
 const SENSOR_COMMIT_DELAY_MS = 250
+const VIEWPORT_TRANSITION_HOLD_MS = 600
 
 // Index = snapped angle / 90. MDN convention: gamma increases toward +90° when the
 // device is tipped to the RIGHT (right edge lower) and toward -90° when tipped left.
@@ -75,13 +78,25 @@ const resolveSensorMode = (beta: number, gamma: number): ScreenOrientationMode |
   return SENSOR_MODES[snappedIndex]
 }
 
-const useSensorMode = (): ScreenOrientationMode | null => {
+interface ISensorState {
+  isTransitioning: boolean
+  mode: ScreenOrientationMode | null
+}
+
+const useSensorMode = (): ISensorState => {
   const [mode, setMode] = useState<ScreenOrientationMode | null>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const lastModeRef = useRef<ScreenOrientationMode | null>(null)
   const pendingRef = useRef<ScreenOrientationMode | null>(null)
   const pendingSinceRef = useRef(0)
 
   useEffect(() => {
+    const clearPending = () => {
+      pendingRef.current = null
+      pendingSinceRef.current = 0
+      setIsTransitioning(false)
+    }
+
     const commit = (next: ScreenOrientationMode) => {
       if (next === lastModeRef.current) return
       lastModeRef.current = next
@@ -95,20 +110,20 @@ const useSensorMode = (): ScreenOrientationMode | null => {
       const candidate = resolveSensorMode(beta, gamma)
       if (candidate === null || candidate === lastModeRef.current) {
         // Ambiguous reading (flat/diagonal) or back at the committed mode — drop any pending change.
-        pendingRef.current = null
-        pendingSinceRef.current = 0
+        clearPending()
         return
       }
 
       const now = Date.now()
       if (candidate !== pendingRef.current) {
+        // The device has left the committed quadrant — a rotation is in progress.
         pendingRef.current = candidate
         pendingSinceRef.current = now
+        setIsTransitioning(true)
         return
       }
       if (now - pendingSinceRef.current >= SENSOR_COMMIT_DELAY_MS) {
-        pendingRef.current = null
-        pendingSinceRef.current = 0
+        clearPending()
         commit(candidate)
       }
     }
@@ -119,21 +134,34 @@ const useSensorMode = (): ScreenOrientationMode | null => {
     }
   }, [])
 
-  return mode
+  return { isTransitioning, mode }
 }
 
 const useScreenOrientation = (): IScreenOrientationState => {
   const [viewport, setViewport] = useState(() => readViewport())
-  const sensorMode = useSensorMode()
+  const [isViewportTransitioning, setIsViewportTransitioning] = useState(false)
+  const { isTransitioning: isSensorTransitioning, mode: sensorMode } = useSensorMode()
 
   useEffect(() => {
-    const update = () => setViewport(readViewport())
-    update()
+    setViewport(readViewport())
 
-    window.addEventListener('orientationchange', update)
+    let hideTimer: number | undefined
+    const handleViewportEvent = () => {
+      setViewport(readViewport())
+      // The viewport is swapping (or just did) — hold the transition veil until the
+      // video texture has refit to the new element size.
+      setIsViewportTransitioning(true)
+      window.clearTimeout(hideTimer)
+      hideTimer = window.setTimeout(() => setIsViewportTransitioning(false), VIEWPORT_TRANSITION_HOLD_MS)
+    }
+
+    window.addEventListener('orientationchange', handleViewportEvent)
+    window.addEventListener('resize', handleViewportEvent)
+    window.visualViewport?.addEventListener('resize', handleViewportEvent)
+
     const orientation = screen.orientation
     if (orientation && typeof orientation.addEventListener === 'function') {
-      orientation.addEventListener('change', update)
+      orientation.addEventListener('change', handleViewportEvent)
     }
 
     // iOS requires the orientation sensor permission to be requested from a user gesture.
@@ -156,9 +184,12 @@ const useScreenOrientation = (): IScreenOrientationState => {
     window.addEventListener('click', onFirstGesture, { passive: true })
 
     return () => {
-      window.removeEventListener('orientationchange', update)
+      window.clearTimeout(hideTimer)
+      window.removeEventListener('orientationchange', handleViewportEvent)
+      window.removeEventListener('resize', handleViewportEvent)
+      window.visualViewport?.removeEventListener('resize', handleViewportEvent)
       if (orientation && typeof orientation.removeEventListener === 'function') {
-        orientation.removeEventListener('change', update)
+        orientation.removeEventListener('change', handleViewportEvent)
       }
       window.removeEventListener('pointerdown', onFirstGesture)
       window.removeEventListener('touchstart', onFirstGesture)
@@ -174,6 +205,7 @@ const useScreenOrientation = (): IScreenOrientationState => {
     mode,
     isViewportLandscape: viewport.isLandscape,
     isLockedLandscape: isLandscape && !viewport.isLandscape,
+    isTransitioning: isSensorTransitioning || isViewportTransitioning,
   }
 }
 
