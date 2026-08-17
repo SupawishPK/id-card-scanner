@@ -52,86 +52,107 @@ const resolveGuideColors = (scannerStatus: string, isSuccess: boolean): { fill: 
 
 interface IIdCardGuideCanvasProps {
   canvasRef: RefObject<HTMLCanvasElement | null>
+  facePosition?: 'bottom-left' | 'bottom-right'
   isSuccess?: boolean
+  landscapeAspect?: boolean
   scannerStatus: string
 }
 
-const IdCardGuideCanvas = memo(({ canvasRef, isSuccess = false, scannerStatus }: IIdCardGuideCanvasProps) => {
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+const IdCardGuideCanvas = memo(
+  ({ canvasRef, facePosition = 'bottom-left', isSuccess = false, landscapeAspect = false, scannerStatus }: IIdCardGuideCanvasProps) => {
+    useEffect(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
 
-    const compiledPaths = getCompiledFramePaths()
-    const outerPath = getCompiledOuterPath()
+      const compiledPaths = getCompiledFramePaths()
+      const outerPath = getCompiledOuterPath()
 
-    const drawGuide = () => {
-      const w = canvas.clientWidth
-      const h = canvas.clientHeight
-      if (!w || !h) return
+      const drawGuide = () => {
+        const w = canvas.clientWidth
+        const h = canvas.clientHeight
+        if (!w || !h) return
 
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
-      const cw = Math.round(w * pixelRatio)
-      const ch = Math.round(h * pixelRatio)
-      if (canvas.width !== cw || canvas.height !== ch) {
-        canvas.width = cw
-        canvas.height = ch
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
+        const cw = Math.round(w * pixelRatio)
+        const ch = Math.round(h * pixelRatio)
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw
+          canvas.height = ch
+        }
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+        ctx.clearRect(0, 0, w, h)
+
+        const padding = Math.min(w, h) * STROKE_PADDING_RATIO
+        const availW = w - padding * 2
+        const availH = h - padding * 2
+
+        ctx.save()
+
+        if (landscapeAspect) {
+          // Frame is 3:2 — rotate the portrait drawing 90° CCW to fill it.
+          // This also carries the face silhouette from bottom-left to bottom-right.
+          const scale = Math.min(availW / PORTRAIT_VIEWBOX.h, availH / PORTRAIT_VIEWBOX.w)
+          ctx.translate(w / 2, h / 2)
+          ctx.rotate(-Math.PI / 2)
+          ctx.scale(scale, scale)
+          ctx.translate(-PORTRAIT_VIEWBOX.w / 2, -PORTRAIT_VIEWBOX.h / 2)
+        } else {
+          const scale = Math.min(availW / PORTRAIT_VIEWBOX.w, availH / PORTRAIT_VIEWBOX.h)
+          const ox = (w - PORTRAIT_VIEWBOX.w * scale) / 2
+          const oy = (h - PORTRAIT_VIEWBOX.h * scale) / 2
+
+          ctx.translate(ox, oy)
+          ctx.scale(scale, scale)
+
+          if (facePosition === 'bottom-right') {
+            // Mirror horizontally so the face silhouette sits at bottom-right instead of bottom-left.
+            // The outer border is symmetric, so mirroring it is harmless.
+            ctx.translate(PORTRAIT_VIEWBOX.w, 0)
+            ctx.scale(-1, 1)
+          }
+        }
+
+        const colors = resolveGuideColors(scannerStatus, isSuccess)
+
+        ctx.fillStyle = colors.fill
+        for (const path of compiledPaths) {
+          ctx.fill(path)
+        }
+
+        if (outerPath) {
+          ctx.strokeStyle = colors.stroke
+          ctx.lineWidth = Math.max(2, 400 / w)
+          ctx.lineCap = 'round'
+          ctx.shadowBlur = 0
+          ctx.stroke(outerPath)
+        }
+
+        ctx.restore()
       }
 
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
+      drawGuide()
 
-      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-      ctx.clearRect(0, 0, w, h)
-
-      const padding = Math.min(w, h) * STROKE_PADDING_RATIO
-      const availW = w - padding * 2
-      const availH = h - padding * 2
-
-      const scale = Math.min(availW / PORTRAIT_VIEWBOX.w, availH / PORTRAIT_VIEWBOX.h)
-      const ox = (w - PORTRAIT_VIEWBOX.w * scale) / 2
-      const oy = (h - PORTRAIT_VIEWBOX.h * scale) / 2
-
-      ctx.save()
-
-      ctx.translate(ox, oy)
-      ctx.scale(scale, scale)
-
-      const colors = resolveGuideColors(scannerStatus, isSuccess)
-
-      ctx.fillStyle = colors.fill
-      for (const path of compiledPaths) {
-        ctx.fill(path)
+      if (typeof ResizeObserver !== 'undefined') {
+        const resizeObserver = new ResizeObserver(drawGuide)
+        resizeObserver.observe(canvas)
+        return () => {
+          resizeObserver.disconnect()
+        }
       }
+    }, [canvasRef, facePosition, isSuccess, landscapeAspect, scannerStatus])
 
-      if (outerPath) {
-        ctx.strokeStyle = colors.stroke
-        ctx.lineWidth = Math.max(2, 400 / w)
-        ctx.lineCap = 'round'
-        ctx.shadowBlur = 0
-        ctx.stroke(outerPath)
-      }
-
-      ctx.restore()
-    }
-
-    drawGuide()
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const resizeObserver = new ResizeObserver(drawGuide)
-      resizeObserver.observe(canvas)
-      return () => {
-        resizeObserver.disconnect()
-      }
-    }
-  }, [canvasRef, isSuccess, scannerStatus])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 size-full rounded-xl bg-transparent"
-    />
-  )
-})
+    return (
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 size-full rounded-xl bg-transparent"
+      />
+    )
+  },
+)
 
 export default IdCardGuideCanvas
