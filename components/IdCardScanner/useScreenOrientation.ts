@@ -10,8 +10,6 @@ export interface IScreenOrientationState {
   isViewportLandscape: boolean
   /** Viewport stays portrait while the device is physically landscape (auto-rotate locked) — overlay UI must counter-rotate. */
   isLockedLandscape: boolean
-  /** True while the device is physically rotating or the viewport is swapping — used to veil the video refit. */
-  isTransitioning: boolean
   /** True when the OS already rotated the layout 180° (auto-rotate ON, device upside-down) — the section flip must be skipped. */
   isViewportUpsideDown: boolean
 }
@@ -19,7 +17,6 @@ export interface IScreenOrientationState {
 const SENSOR_QUADRANT_TOLERANCE_DEG = 35
 const SENSOR_FLAT_THRESHOLD_DEG = 20
 const SENSOR_COMMIT_DELAY_MS = 250
-const VIEWPORT_TRANSITION_HOLD_MS = 600
 
 // Index = snapped angle / 90. MDN convention: gamma increases toward +90° when the
 // device is tipped to the RIGHT (right edge lower) and toward -90° when tipped left.
@@ -81,14 +78,8 @@ const resolveSensorMode = (beta: number, gamma: number): ScreenOrientationMode |
   return SENSOR_MODES[snappedIndex]
 }
 
-interface ISensorState {
-  isTransitioning: boolean
-  mode: ScreenOrientationMode | null
-}
-
-const useSensorMode = (): ISensorState => {
+const useSensorMode = (): ScreenOrientationMode | null => {
   const [mode, setMode] = useState<ScreenOrientationMode | null>(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
   const lastModeRef = useRef<ScreenOrientationMode | null>(null)
   const pendingRef = useRef<ScreenOrientationMode | null>(null)
   const pendingSinceRef = useRef(0)
@@ -97,7 +88,6 @@ const useSensorMode = (): ISensorState => {
     const clearPending = () => {
       pendingRef.current = null
       pendingSinceRef.current = 0
-      setIsTransitioning(false)
     }
 
     const commit = (next: ScreenOrientationMode) => {
@@ -119,10 +109,8 @@ const useSensorMode = (): ISensorState => {
 
       const now = Date.now()
       if (candidate !== pendingRef.current) {
-        // The device has left the committed quadrant — a rotation is in progress.
         pendingRef.current = candidate
         pendingSinceRef.current = now
-        setIsTransitioning(true)
         return
       }
       if (now - pendingSinceRef.current >= SENSOR_COMMIT_DELAY_MS) {
@@ -137,7 +125,7 @@ const useSensorMode = (): ISensorState => {
     }
   }, [])
 
-  return { isTransitioning, mode }
+  return mode
 }
 
 const useScreenOrientation = (): IScreenOrientationState => {
@@ -147,25 +135,17 @@ const useScreenOrientation = (): IScreenOrientationState => {
     angle: 0,
     isLandscape: false,
   })
-  const [isViewportTransitioning, setIsViewportTransitioning] = useState(false)
-  const { isTransitioning: isSensorTransitioning, mode: sensorMode } = useSensorMode()
+  const sensorMode = useSensorMode()
 
   useEffect(() => {
     setViewport(readViewport())
 
-    let hideTimer: number | undefined
     const handleViewportEvent = () => {
       setViewport(readViewport())
-      // The viewport is swapping (or just did) — hold the transition veil until the
-      // video texture has refit to the new element size.
-      setIsViewportTransitioning(true)
-      window.clearTimeout(hideTimer)
-      hideTimer = window.setTimeout(() => setIsViewportTransitioning(false), VIEWPORT_TRANSITION_HOLD_MS)
     }
 
     window.addEventListener('orientationchange', handleViewportEvent)
     window.addEventListener('resize', handleViewportEvent)
-    window.visualViewport?.addEventListener('resize', handleViewportEvent)
 
     const orientation = screen.orientation
     if (orientation && typeof orientation.addEventListener === 'function') {
@@ -192,10 +172,8 @@ const useScreenOrientation = (): IScreenOrientationState => {
     window.addEventListener('click', onFirstGesture, { passive: true })
 
     return () => {
-      window.clearTimeout(hideTimer)
       window.removeEventListener('orientationchange', handleViewportEvent)
       window.removeEventListener('resize', handleViewportEvent)
-      window.visualViewport?.removeEventListener('resize', handleViewportEvent)
       if (orientation && typeof orientation.removeEventListener === 'function') {
         orientation.removeEventListener('change', handleViewportEvent)
       }
@@ -213,7 +191,6 @@ const useScreenOrientation = (): IScreenOrientationState => {
     mode,
     isViewportLandscape: viewport.isLandscape,
     isLockedLandscape: isLandscape && !viewport.isLandscape,
-    isTransitioning: isSensorTransitioning || isViewportTransitioning,
     isViewportUpsideDown: viewportAngleToMode(viewport.angle) === 'upside-down',
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 import CameraAccessOverlay from './ui/CameraAccessOverlay'
+import CameraPreviewCanvas from './ui/CameraPreviewCanvas'
 import IdCardScanGuide from './ui/IdCardScanGuide'
 import ScanFailedModal from './ui/ScanFailedModal'
 import useIdCardScanner from './useIdCardScanner'
@@ -21,7 +22,7 @@ interface IIdCardScannerProps {
 }
 
 const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => {
-  const { mode, isViewportLandscape, isLockedLandscape, isTransitioning, isViewportUpsideDown } = useScreenOrientation()
+  const { mode, isViewportLandscape, isLockedLandscape, isViewportUpsideDown } = useScreenOrientation()
   const isPhysicallyUpsideDown = mode === 'upside-down'
   // Skip the section flip when the OS already rotated the layout 180° (auto-rotate ON).
   const isUpsideDown = isPhysicallyUpsideDown && !isViewportUpsideDown
@@ -79,32 +80,22 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black"
       style={isUpsideDown ? { transform: 'rotate(180deg)' } : undefined}
     >
+      {/* The video stays mounted (stream source, detection sampling, ROI rect mapping)
+          but invisible — the camera is displayed through CameraPreviewCanvas so the
+          frame never depends on the browser's async object-fit refit during rotation. */}
       <video
         ref={videoRef}
         aria-label="video feed from camera"
         autoPlay
-        className={cn(
-          'absolute inset-0 size-full object-cover transition-opacity duration-200',
-          isTransitioning && 'opacity-0',
-        )}
+        className="invisible absolute inset-0 size-full object-cover"
         disablePictureInPicture
         muted
         playsInline
       />
 
-      <div className="pointer-events-none absolute inset-0 bg-black/5" />
+      <CameraPreviewCanvas videoRef={videoRef} />
 
-      {/* Rotation transition veil — mounted early from the sensor so the video texture
-          refit during the viewport swap is never visible (no opacity transitions:
-          Safari's backdrop-filter breaks inside opacity animations) */}
-      {isTransitioning && (
-        <div className="pointer-events-none absolute inset-0 z-[35] grid place-items-center bg-[rgba(41,41,58,0.23)] backdrop-blur-md">
-          <div role="status">
-            <div className="mx-auto size-10 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-            <p className="mt-3 text-sm text-white">กำลังปรับมุมมอง…</p>
-          </div>
-        </div>
-      )}
+      <div className="pointer-events-none absolute inset-0 bg-black/5" />
 
       <header
         className={cn(
@@ -161,7 +152,6 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       <IdCardScanGuide
         guideCanvasRef={guideCanvasRef}
         isSuccess={isSuccess}
-        isTransitioning={isTransitioning}
         isViewportLandscape={isViewportLandscape}
         orientation={mode}
         scannerStatus={scannerStatus}
