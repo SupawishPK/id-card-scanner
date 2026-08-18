@@ -1,10 +1,12 @@
 'use client'
 
+import type { ICameraErrorType } from '../camera/classifyCameraError'
+
 import FullScreenPermission from './FullScreenPermission'
 
 interface ICameraAccessOverlayProps {
   cameraError?: string
-  cameraErrorType?: 'permission-denied' | 'generic'
+  cameraErrorType?: ICameraErrorType
   cameraState: string
   /** Counter-rotation when auto-rotate is locked and the device is physically landscape. */
   lockedRotation: 0 | 90 | -90
@@ -44,6 +46,34 @@ const CameraAccessOverlay = ({
   }
 
   if (cameraState === 'error') {
+    if (cameraErrorType === 'not-allowed') {
+      return (
+        <FullScreenPermission
+          body="การสแกนบัตรประชาชนจำเป็นต้องใช้กล้องของอุปกรณ์ โปรดอัปเดตแอปพลิเคชันเป็นเวอร์ชันล่าสุด แล้วลองใหม่อีกครั้ง"
+          icon="alert"
+          lockedRotation={lockedRotation}
+          onPrimary={onBack}
+          primaryLabel="รับทราบ"
+          title="แอปนี้ยังไม่อนุญาตให้ใช้กล้อง"
+        />
+      )
+    }
+
+    if (cameraErrorType === 'no-camera') {
+      return (
+        <FullScreenPermission
+          body={cameraError}
+          icon="alert"
+          lockedRotation={lockedRotation}
+          onPrimary={onRetryCamera}
+          onSecondary={onBack}
+          primaryLabel="ลองเปิดกล้องอีกครั้ง"
+          secondaryLabel="ไม่"
+          title="ไม่พบกล้อง"
+        />
+      )
+    }
+
     return (
       <FullScreenPermission
         body={

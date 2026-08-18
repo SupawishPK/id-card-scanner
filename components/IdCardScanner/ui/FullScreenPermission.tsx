@@ -7,9 +7,10 @@ interface IFullScreenPermissionProps {
   icon: 'alert' | 'camera'
   lockedRotation: 0 | 90 | -90
   onPrimary: () => void
-  onSecondary: () => void
+  /** Omit both secondary props to render only the primary button. */
+  onSecondary?: () => void
   primaryLabel: string
-  secondaryLabel: string
+  secondaryLabel?: string
   title: string
 }
 
@@ -58,13 +59,15 @@ const FullScreenPermission = ({
       <h2 className="font-graphik-medium text-lg text-white">{title}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
       <div className="mt-6 flex gap-4">
-        <button
-          className="h-12 rounded-full border border-tmn-primary bg-transparent px-8 font-graphik-medium text-base leading-6 text-tmn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tmn-primary"
-          onClick={onSecondary}
-          type="button"
-        >
-          {secondaryLabel}
-        </button>
+        {onSecondary && secondaryLabel && (
+          <button
+            className="h-12 rounded-full border border-tmn-primary bg-transparent px-8 font-graphik-medium text-base leading-6 text-tmn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tmn-primary"
+            onClick={onSecondary}
+            type="button"
+          >
+            {secondaryLabel}
+          </button>
+        )}
         <button
           className="h-12 rounded-full bg-tmn-primary px-8 font-graphik-medium text-base leading-6 text-[#FFFCFA] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tmn-primary"
           onClick={onPrimary}

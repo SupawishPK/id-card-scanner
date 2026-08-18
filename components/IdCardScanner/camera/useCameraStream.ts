@@ -2,11 +2,12 @@
 
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
+import classifyCameraError, { type ICameraErrorType } from './classifyCameraError'
 import mapCameraErrorToMessage from './mapCameraErrorToMessage'
+import queryCameraPermissionState from './queryCameraPermissionState'
 import requestRearCameraStream from './requestRearCameraStream'
 
 type ICameraAccessState = 'idle' | 'requesting' | 'ready' | 'error'
-type ICameraErrorType = 'permission-denied' | 'generic'
 
 const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   const [cameraState, setCameraState] = useState<ICameraAccessState>('idle')
@@ -55,19 +56,20 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
     } catch (error) {
       if (requestId !== cameraRequestIdRef.current) return
 
-      stopCamera()
       if (error instanceof TypeError) {
+        stopCamera()
         setCameraError('เบราว์เซอร์นี้ไม่รองรับ Camera API กรุณาใช้ Safari หรือ Chrome รุ่นล่าสุด')
         setCameraErrorType('generic')
-      } else if (
-        error instanceof DOMException &&
-        (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')
-      ) {
-        setCameraError(mapCameraErrorToMessage(error))
-        setCameraErrorType('permission-denied')
       } else {
+        // Query the permission state AFTER the failure — WebKit only settles it
+        // once the first getUserMedia request has been made. A NotAllowedError
+        // while still 'prompt' means the prompt never appeared (host app does
+        // not allow camera); 'denied' means the user refused it before.
+        const permissionState = await queryCameraPermissionState()
+        if (requestId !== cameraRequestIdRef.current) return
+        stopCamera()
         setCameraError(mapCameraErrorToMessage(error))
-        setCameraErrorType('generic')
+        setCameraErrorType(classifyCameraError(error, permissionState))
       }
       setCameraState('error')
     }
