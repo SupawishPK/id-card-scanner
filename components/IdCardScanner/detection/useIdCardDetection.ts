@@ -147,12 +147,12 @@ const useIdCardDetection = ({ guideRef, isEnabled, videoRef, onDetectionUpdate }
     window.addEventListener('orientationchange', onOrientationChange)
 
     const screenOrientation = typeof screen !== 'undefined' ? screen.orientation : undefined
-    screenOrientation?.addEventListener?.('change', onOrientationChange)
+    screenOrientation?.addEventListener('change', onOrientationChange)
 
     return () => {
       window.removeEventListener('resize', onOrientationChange)
       window.removeEventListener('orientationchange', onOrientationChange)
-      screenOrientation?.removeEventListener?.('change', onOrientationChange)
+      screenOrientation?.removeEventListener('change', onOrientationChange)
     }
   }, [])
 

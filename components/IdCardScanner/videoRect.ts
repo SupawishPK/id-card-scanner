@@ -72,7 +72,11 @@ export type IExportRotation = 0 | 90 | 180 | 270
  * do not follow the UI's per-mode rotation, so each orientation mode needs its
  * own value (default 270 = 90° CCW keeps the pre-existing portrait behavior).
  */
-const exportVideoRectAsJpeg = (video: HTMLVideoElement, region: IVideoRect, rotation: IExportRotation = 270): string | null => {
+const exportVideoRectAsJpeg = (
+  video: HTMLVideoElement,
+  region: IVideoRect,
+  rotation: IExportRotation = 270,
+): string | null => {
   const swapsAxes = rotation === 90 || rotation === 270
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(swapsAxes ? region.height : region.width)

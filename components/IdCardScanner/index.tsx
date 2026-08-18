@@ -5,40 +5,44 @@ import { useEffect } from 'react'
 import CameraAccessOverlay from './ui/CameraAccessOverlay'
 import CameraPreviewCanvas from './ui/CameraPreviewCanvas'
 import IdCardScanGuide from './ui/IdCardScanGuide'
+import IdCardScannerFooter from './ui/IdCardScannerFooter'
+import IdCardScannerHeader from './ui/IdCardScannerHeader'
 import ScanFailedModal from './ui/ScanFailedModal'
 import useIdCardScanner from './useIdCardScanner'
+import type { ScreenOrientationMode } from './useScreenOrientation'
 import useScreenOrientation from './useScreenOrientation'
 import type { IExportRotation } from './videoRect'
-import cn from '@/components/cn'
 
-export type IVerifyResult =
-  | { success: true }
-  | { message: string; success: false; type: 'failed' | 'warning' }
-
+import type { IIdCardAnalyzeCode } from '@/api/postIdCardAnalyzeApi'
+import cn from '@/utils/cn'
 interface IIdCardScannerProps {
   onBack: () => void
   onSuccess: () => void
-  onVerify: (capturedImage: string) => Promise<IVerifyResult>
+  onVerify: (capturedImage: string) => Promise<IIdCardAnalyzeCode>
+}
+
+const getLockedRotation = (isLockedLandscape: boolean, isLandscapeLeft: boolean): 0 | 90 | -90 => {
+  if (!isLockedLandscape) return 0
+  return isLandscapeLeft ? 90 : -90
+}
+
+const getCaptureRotation = (
+  mode: ScreenOrientationMode,
+  isViewportLandscape: boolean,
+  isLockedLandscape: boolean,
+): IExportRotation => {
+  if (mode === 'upside-down') return 180
+  if (isViewportLandscape) return 0
+  if (!isLockedLandscape) return 270
+  return mode === 'landscape-left' ? 270 : 90
 }
 
 const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => {
   const { mode, isViewportLandscape, isLockedLandscape, isViewportUpsideDown } = useScreenOrientation()
   const isPhysicallyUpsideDown = mode === 'upside-down'
-  // Skip the section flip when the OS already rotated the layout 180° (auto-rotate ON).
   const isUpsideDown = isPhysicallyUpsideDown && !isViewportUpsideDown
-  const isLandscape = mode === 'landscape-left' || mode === 'landscape-right'
-  const isLandscapeLeft = mode === 'landscape-left'
-  const isLandscapeRight = mode === 'landscape-right'
-  const lockedRotation = isLockedLandscape ? (isLandscapeLeft ? 90 : -90) : 0
-  // Raw video pixels do not follow the UI's rotation — the export must undo each mode's
-  // on-screen rotation so the JPEG always reads as an upright portrait card.
-  const captureRotation: IExportRotation = isPhysicallyUpsideDown
-    ? 180
-    : isViewportLandscape
-      ? 0
-      : isLockedLandscape
-        ? (isLandscapeLeft ? 270 : 90)
-        : 270
+  const lockedRotation = getLockedRotation(isLockedLandscape, mode === 'landscape-left')
+  const captureRotation = getCaptureRotation(mode, isViewportLandscape, isLockedLandscape)
 
   const {
     scanState,
@@ -53,15 +57,8 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
   } = useIdCardScanner({
     captureRotation,
     onScanSuccess: onSuccess,
-    verifyIdCardImage: async (image: string) => {
-      const result = await onVerify(image)
-      return result.success ? { success: true } : result
-    },
+    verifyIdCardImage: onVerify,
   })
-
-  const isSuccess = scanState.phase === 'success'
-  const verificationWarning = scanState.phase === 'warning' ? scanState.message : undefined
-  const verificationFailed = scanState.phase === 'failed' ? scanState.errorMessage : undefined
 
   // Overlay layout changed without a viewport resize (locked-landscape counter-rotation) —
   // nudge listeners that cache frame geometry (e.g. detection ROI) to recompute.
@@ -77,10 +74,12 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
 
   return (
     <section
-      className="relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black"
-      style={isUpsideDown ? { transform: 'rotate(180deg)' } : undefined}
+      className={cn(
+        'relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black',
+        isUpsideDown && 'rotate-180',
+      )}
     >
-      {/* The video stays mounted (stream source, detection sampling, ROI rect mapping)
+      {/* NOTE: The video stays mounted (stream source, detection sampling, ROI rect mapping)
           but invisible — the camera is displayed through CameraPreviewCanvas so the
           frame never depends on the browser's async object-fit refit during rotation. */}
       <video
@@ -97,97 +96,30 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
 
       <div className="pointer-events-none absolute inset-0 bg-black/5" />
 
-      <header
-        className={cn(
-          'relative z-20 flex items-center justify-center bg-black/30 p-5 transition-[padding] duration-300 ease-in-out',
-          isViewportLandscape && 'h-14 p-0 bg-[rgba(8,8,8,0.46)]',
-          isLockedLandscape && 'absolute inset-y-0 w-14 p-0 bg-[rgba(8,8,8,0.46)]',
-          isLockedLandscape && isLandscapeLeft && 'right-0',
-          isLockedLandscape && isLandscapeRight && 'left-0',
-        )}
-      >
-        <div
-          className={cn(
-            'flex shrink-0 items-center gap-3 transition-transform duration-300 ease-in-out',
-            isViewportLandscape && 'w-full pl-3',
-            isLockedLandscape && 'w-dvh justify-start py-3 pl-3',
-            isLockedLandscape && isLandscapeLeft && 'rotate-90',
-            isLockedLandscape && isLandscapeRight && '-rotate-90',
-          )}
-        >
-          <button
-            aria-label="ย้อนกลับ"
-            className={cn(
-              'grid shrink-0 place-items-center text-white transition-opacity active:opacity-60',
-              isLandscape ? 'size-8' : 'absolute left-4 size-10',
-            )}
-            onClick={onBack}
-            type="button"
-          >
-            <svg
-              aria-hidden="true"
-              className={isLandscape ? 'size-6' : 'size-5'}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              viewBox="0 0 24 24"
-            >
-              <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <h1
-            className={cn(
-              'mb-0 whitespace-nowrap font-graphik-medium text-white',
-              isLandscape && 'flex-1 text-center',
-              isLandscape ? 'text-base' : 'text-xl',
-            )}
-          >
-            สแกนบัตรประชาชน
-          </h1>
-          {/* Balances the 44px back-button area so the title stays truly centered */}
-          {isLandscape && <div aria-hidden className="w-11 shrink-0" />}
-        </div>
-      </header>
+      <IdCardScannerHeader isViewportLandscape={isViewportLandscape} mode={mode} onBack={onBack} />
 
       <IdCardScanGuide
         guideCanvasRef={guideCanvasRef}
-        isSuccess={isSuccess}
+        isSuccess={scanState.phase === 'success'}
         isViewportLandscape={isViewportLandscape}
         orientation={mode}
         scannerStatus={scannerStatus}
       />
 
-      {/* Footer */}
-      <div
-        className={cn(
-          'z-30 w-full p-5 text-center backdrop-blur-sm transition-[padding] duration-300 ease-in-out',
-          isViewportLandscape && 'flex h-14 items-center justify-center p-0',
-          isLockedLandscape && 'absolute inset-y-0 flex w-14 items-center justify-center p-0',
-          isLockedLandscape && isLandscapeLeft && 'left-0',
-          isLockedLandscape && isLandscapeRight && 'right-0',
-          verificationWarning ? 'bg-[#FFEA66] text-[#080808]' : 'bg-black/30 text-white',
-          !verificationWarning && isLandscape && 'bg-[rgba(8,8,8,0.46)]',
-        )}
-      >
-        <div
-          className={cn(
-            'transition-transform duration-300 ease-in-out',
-            isLockedLandscape && 'py-4',
-            isLockedLandscape && isLandscapeLeft && 'rotate-90',
-            isLockedLandscape && isLandscapeRight && '-rotate-90',
-          )}
-        >
-          <p className="mb-0 font-graphik-medium text-base leading-relaxed">
-            {verificationWarning ?? 'วางบัตรในกรอบเลย เราจะสแกนให้อัตโนมัติ'}
-          </p>
-        </div>
-      </div>
+      <IdCardScannerFooter
+        isViewportLandscape={isViewportLandscape}
+        mode={mode}
+        verificationWarning={scanState.phase === 'warning' ? scanState.code : undefined}
+      />
 
       {scanState.phase === 'verifying' && (
         <div className="pointer-events-none absolute inset-0 z-[35] grid place-items-center">
           <div
-            className="flex items-center gap-3 rounded-full bg-black/60 px-5 py-3"
-            style={{ transform: lockedRotation ? `rotate(${lockedRotation}deg)` : undefined }}
+            className={cn(
+              'flex items-center gap-3 rounded-full bg-black/60 px-5 py-3',
+              lockedRotation === 90 && 'rotate-90',
+              lockedRotation === -90 && '-rotate-90',
+            )}
           >
             <div className="size-5 animate-spin rounded-full border-2 border-white/25 border-t-white" />
             <span className="font-graphik-medium text-sm text-white">กำลังตรวจสอบบัตร…</span>
@@ -195,14 +127,12 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         </div>
       )}
 
-      {verificationFailed && (
-        <ScanFailedModal
-          lockedRotation={lockedRotation}
-          message={verificationFailed}
-          onBack={onBack}
-          onRetry={retryScan}
-        />
-      )}
+      {scanState.phase === 'failed' &&
+        (scanState.code === 'RECAPTURE' ? (
+          <ScanFailedModal mode={mode} onBack={onBack} onRetry={retryScan} />
+        ) : (
+          <ScanFailedModal mode={mode} onBack={onBack} onRetry={retryScan} warningCode={scanState.code} />
+        ))}
 
       <CameraAccessOverlay
         cameraError={cameraError}

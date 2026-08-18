@@ -14,23 +14,23 @@ import {
   type IVideoRect,
 } from './videoRect'
 
+import type { IIdCardAnalyzeCode, IIdCardAnalyzeErrorCode, IIdCardAnalyzeWarningCode } from '@/api/postIdCardAnalyzeApi'
+
 type IIdCardScanEvent =
   | { type: 'CAMERA_READY' }
   | { errorMessage: string; type: 'CAMERA_ERROR' }
   | { status: IScannerStatus; type: 'SCANNER_STATUS_UPDATED' }
   | { type: 'CAPTURE_COMPLETE' }
   | { type: 'VERIFY_SUCCESS' }
-  | { errorMessage: string; type: 'VERIFY_FAILED' }
-  | { message: string; type: 'VERIFY_WARNING' }
+  | { code: IIdCardAnalyzeErrorCode; type: 'VERIFY_FAILED' }
+  | { code: IIdCardAnalyzeWarningCode; type: 'VERIFY_WARNING' }
   | { type: 'WARNING_TIMEOUT_COMPLETE' }
   | { type: 'CAPTURE_RESET' }
 
 interface IUseIdCardScannerOptions {
   captureRotation?: IExportRotation
   onScanSuccess: () => void
-  verifyIdCardImage: (
-    capturedImage: string,
-  ) => Promise<{ success: true } | { message: string; success: false; type: 'failed' | 'warning' }>
+  verifyIdCardImage: (capturedImage: string) => Promise<IIdCardAnalyzeCode>
 }
 
 const nextScanState = (state: IIdCardScanState, event: IIdCardScanEvent): IIdCardScanState => {
@@ -69,10 +69,8 @@ const nextScanState = (state: IIdCardScanState, event: IIdCardScanEvent): IIdCar
       switch (event.type) {
         case 'VERIFY_SUCCESS':
           return { phase: 'success' }
-        case 'VERIFY_WARNING':
-          return { phase: 'warning', message: event.message }
         case 'VERIFY_FAILED':
-          return { phase: 'failed', errorMessage: event.errorMessage }
+          return { phase: 'failed', code: event.code }
         default:
           return state
       }
@@ -107,8 +105,8 @@ type IIdCardScanState =
   | { errorMessage: string; phase: 'camera-error' }
   | { phase: 'detecting'; scannerStatus: IScannerStatus }
   | { phase: 'verifying' }
-  | { message: string; phase: 'warning' }
-  | { errorMessage: string; phase: 'failed' }
+  | { code: IIdCardAnalyzeWarningCode; phase: 'warning' }
+  | { code: IIdCardAnalyzeErrorCode; phase: 'failed' }
   | { phase: 'success' }
 
 const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardImage }: IUseIdCardScannerOptions) => {
@@ -206,41 +204,33 @@ const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardIm
     let isCancelled = false
 
     const submitForVerification = async () => {
-      try {
-        const result = await verifyIdCardImage(capturedImage)
-        if (isCancelled) return
+      const result = await verifyIdCardImage(capturedImage)
+      if (isCancelled) return
 
-        if (result.success) {
-          sessionStorage.setItem('captured_id_card', capturedImage)
-          dispatch({ type: 'VERIFY_SUCCESS' })
-          successTimerRef.current = setTimeout(() => {
-            onScanSuccess()
-          }, ID_CARD_SCANNER_CONFIG.successFeedbackDurationMs)
-        } else if (result.type === 'warning') {
-          cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
-          resetDetection()
-          capturedRef.current = false
-          capturedImageRef.current = undefined
-          verifyingRef.current = false
-          dispatch({
-            type: 'VERIFY_WARNING',
-            message: result.message,
-          })
-        } else {
-          dispatch({ type: 'VERIFY_FAILED', errorMessage: result.message })
-        }
-      } catch {
-        if (isCancelled) return
-        cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
-        resetDetection()
-        capturedRef.current = false
-        capturedImageRef.current = undefined
-        verifyingRef.current = false
-        dispatch({
-          type: 'VERIFY_FAILED',
-          errorMessage: 'ระบบไม่สามารถตรวจสอบบัตรประชาชนได้ กรุณาลองใหม่อีกครั้ง',
-        })
+      if (result === 'PASSED') {
+        sessionStorage.setItem('captured_id_card', capturedImage)
+        dispatch({ type: 'VERIFY_SUCCESS' })
+        successTimerRef.current = setTimeout(() => {
+          onScanSuccess()
+        }, ID_CARD_SCANNER_CONFIG.successFeedbackDurationMs)
+        return
       }
+
+      if (result === 'FAILED' || result === 'RECAPTURE') {
+        dispatch({ type: 'VERIFY_FAILED', code: result })
+        return
+      }
+
+      cooldownUntilRef.current = Date.now() + ID_CARD_SCANNER_CONFIG.retryCooldownMs
+      resetDetection()
+      capturedRef.current = false
+      capturedImageRef.current = undefined
+      verifyingRef.current = false
+      dispatch({
+        type: 'VERIFY_WARNING',
+        code: result,
+      })
+      return
     }
 
     void submitForVerification()
@@ -250,8 +240,6 @@ const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardIm
     }
   }, [scanState.phase, dispatch, verifyIdCardImage, onScanSuccess, resetDetection])
 
-  // Verify timeout: if the API hangs we surface an error instead of leaving
-  // the user stuck on the spinner forever.
   useEffect(() => {
     if (scanState.phase !== 'verifying') return
 
@@ -263,7 +251,7 @@ const useIdCardScanner = ({ captureRotation = 270, onScanSuccess, verifyIdCardIm
       capturedImageRef.current = undefined
       dispatch({
         type: 'VERIFY_FAILED',
-        errorMessage: 'ระบบไม่สามารถตรวจสอบบัตรประชาชนได้ กรุณาลองใหม่อีกครั้ง',
+        code: 'FAILED',
       })
     }, ID_CARD_SCANNER_CONFIG.verifyTimeoutMs)
 

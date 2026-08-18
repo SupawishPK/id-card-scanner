@@ -57,8 +57,8 @@ describe('analyzeIdCardGeometry', () => {
       const luma = new Uint8Array(W * H)
       const leftEdgeX = Math.floor(W * 0.12)
       const rightEdgeX = Math.floor(W * 0.85)
-      const topEdgeY = Math.floor(H * 0.10)
-      const bottomEdgeY = Math.floor(H * 0.90)
+      const topEdgeY = Math.floor(H * 0.1)
+      const bottomEdgeY = Math.floor(H * 0.9)
 
       for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
@@ -97,7 +97,9 @@ describe('analyzeIdCardGeometry', () => {
 
     it('should accept explicit sampleInterval', () => {
       const luma = new Uint8Array(W * H).fill(128)
-      expect(() => analyzeIdCardGeometry({ luminance: luma, imageWidth: W, imageHeight: H, sampleInterval: 1 })).not.toThrow()
+      expect(() =>
+        analyzeIdCardGeometry({ luminance: luma, imageWidth: W, imageHeight: H, sampleInterval: 1 }),
+      ).not.toThrow()
     })
   })
 

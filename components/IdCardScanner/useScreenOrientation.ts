@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from 'react'
 
 export type ScreenOrientationMode = 'portrait' | 'landscape-left' | 'landscape-right' | 'upside-down'
 
-export interface IScreenOrientationState {
-  mode: ScreenOrientationMode
-  /** Viewport itself is landscape (auto-rotate ON) — the UI needs no counter-rotation. */
-  isViewportLandscape: boolean
+interface IScreenOrientationState {
   /** Viewport stays portrait while the device is physically landscape (auto-rotate locked) — overlay UI must counter-rotate. */
   isLockedLandscape: boolean
+  /** Viewport itself is landscape (auto-rotate ON) — the UI needs no counter-rotation. */
+  isViewportLandscape: boolean
   /** True when the OS already rotated the layout 180° (auto-rotate ON, device upside-down) — the section flip must be skipped. */
   isViewportUpsideDown: boolean
+  mode: ScreenOrientationMode
 }
 
 const SENSOR_QUADRANT_TOLERANCE_DEG = 35
@@ -21,12 +21,7 @@ const SENSOR_COMMIT_DELAY_MS = 250
 // Index = snapped angle / 90. MDN convention: gamma increases toward +90° when the
 // device is tipped to the RIGHT (right edge lower) and toward -90° when tipped left.
 // Device CW 90° (landscape-right) → gamma +90; device CCW 90° (landscape-left) → gamma -90.
-const SENSOR_MODES: readonly ScreenOrientationMode[] = [
-  'portrait',
-  'landscape-right',
-  'upside-down',
-  'landscape-left',
-]
+const SENSOR_MODES: readonly ScreenOrientationMode[] = ['portrait', 'landscape-right', 'upside-down', 'landscape-left']
 
 const viewportAngleToMode = (angle: number): ScreenOrientationMode => {
   const normalized = ((angle % 360) + 360) % 360
@@ -39,7 +34,8 @@ const viewportAngleToMode = (angle: number): ScreenOrientationMode => {
 const readViewport = (): { angle: number; isLandscape: boolean } => {
   if (typeof window === 'undefined') return { angle: 0, isLandscape: false }
 
-  const orientation = screen.orientation
+  // screen.orientation is absent on legacy iOS browsers — keep the runtime guard for them.
+  const orientation = screen.orientation as ScreenOrientation | undefined
   if (orientation) {
     const angle = typeof orientation.angle === 'number' ? orientation.angle : 0
     return { angle, isLandscape: orientation.type.startsWith('landscape') }
@@ -52,6 +48,12 @@ const readViewport = (): { angle: number; isLandscape: boolean } => {
   }
 
   return { angle: 0, isLandscape: false }
+}
+
+const normalizeGamma = (gamma: number): number => {
+  if (gamma > 90) return 180 - gamma
+  if (gamma < -90) return -180 - gamma
+  return gamma
 }
 
 /**
@@ -68,14 +70,14 @@ const resolveSensorMode = (beta: number, gamma: number): ScreenOrientationMode |
   }
 
   // Normalize gamma to [-90, 90] so the ±180° gimbal flip while upside down still resolves to 180°.
-  const normalizedGamma = gamma > 90 ? 180 - gamma : gamma < -90 ? -180 - gamma : gamma
+  const normalizedGamma = normalizeGamma(gamma)
   const angle = (Math.atan2(normalizedGamma, beta) * 180) / Math.PI
   const normalized = ((angle % 360) + 360) % 360
   const snappedIndex = Math.round(normalized / 90) % 4
   const rawDelta = Math.abs(normalized - snappedIndex * 90)
   const delta = Math.min(rawDelta, 360 - rawDelta)
   if (delta > SENSOR_QUADRANT_TOLERANCE_DEG) return null
-  return SENSOR_MODES[snappedIndex]
+  return SENSOR_MODES[snappedIndex] ?? null
 }
 
 const useSensorMode = (): ScreenOrientationMode | null => {
@@ -147,16 +149,14 @@ const useScreenOrientation = (): IScreenOrientationState => {
     window.addEventListener('orientationchange', handleViewportEvent)
     window.addEventListener('resize', handleViewportEvent)
 
-    const orientation = screen.orientation
+    const orientation = screen.orientation as ScreenOrientation | undefined
     if (orientation && typeof orientation.addEventListener === 'function') {
       orientation.addEventListener('change', handleViewportEvent)
     }
 
-    // iOS requires the orientation sensor permission to be requested from a user gesture.
     const requestPermission = () => {
       const DeviceOrientation = window.DeviceOrientationEvent as unknown as
-        | { requestPermission?: () => Promise<string> }
-        | undefined
+        { requestPermission?: () => Promise<string> } | undefined
       if (DeviceOrientation && typeof DeviceOrientation.requestPermission === 'function') {
         DeviceOrientation.requestPermission().catch(() => undefined)
       }

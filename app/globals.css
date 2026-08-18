@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@theme {
+  --color-tmn-primary: #FF5A00;
+  --color-tmn-bg: #FDFDFD;
+}
+
 :root {
   color-scheme: dark;
   font-family: var(--font-prompt), Arial, sans-serif;

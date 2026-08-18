@@ -5,8 +5,8 @@ import { ID_CARD_ASPECT_RATIO } from '../detection/idCardDetectionConfig'
 import type { ScreenOrientationMode } from '../useScreenOrientation'
 
 import IdCardGuideCanvas from './IdCardGuideCanvas'
-import cn from '@/components/cn'
 
+import cn from '@/utils/cn'
 
 interface IIdCardScanGuideProps {
   guideCanvasRef: RefObject<HTMLCanvasElement | null>
@@ -19,6 +19,11 @@ interface IIdCardScanGuideProps {
 // Landscape frame mirrors the card ratio (portrait 53.98/85.6 → landscape 85.6/53.98 ≈ 3:2)
 const LANDSCAPE_ASPECT_RATIO = String(1 / ID_CARD_ASPECT_RATIO)
 
+const getFrameRotation = (isLockedLandscape: boolean, isLandscapeLeft: boolean): 0 | 90 | -90 => {
+  if (!isLockedLandscape) return 0
+  return isLandscapeLeft ? 90 : -90
+}
+
 const IdCardScanGuide = ({
   guideCanvasRef,
   isSuccess = false,
@@ -28,11 +33,10 @@ const IdCardScanGuide = ({
 }: IIdCardScanGuideProps) => {
   const isLandscape = orientation === 'landscape-left' || orientation === 'landscape-right'
   const isLandscapeLeft = orientation === 'landscape-left'
-  const isLandscapeRight = orientation === 'landscape-right'
   // Auto-rotate locked: the viewport stays portrait, so the overlay counter-rotates to appear upright.
   // A 2:3 element rotated ±90° reads as a 3:2 landscape frame to the user.
   const isLockedLandscape = isLandscape && !isViewportLandscape
-  const frameRotation = isLockedLandscape ? (isLandscapeLeft ? 90 : -90) : 0
+  const frameRotation = getFrameRotation(isLockedLandscape, isLandscapeLeft)
 
   return (
     <div className="relative z-10 flex flex-1 flex-col items-center justify-center">

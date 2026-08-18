@@ -2,39 +2,40 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import IdCardScanner, { IVerifyResult } from "@/components/IdCardScanner";
+import IdCardScanner from "@/components/IdCardScanner";
+import type { IIdCardAnalyzeCode } from "@/api/postIdCardAnalyzeApi";
 
 const Home = () => {
   const router = useRouter();
 
-  const onVerify = async (capturedImage: string): Promise<IVerifyResult> => {
+  const onVerify = async (capturedImage: string): Promise<IIdCardAnalyzeCode> => {
     console.log("[App/API] 🛰️ Verifying ID Card photo in background...");
 
     // Mock: simulate API response delay between 1000 - 1500 ms
     const delay = Math.floor(Math.random() * 500) + 1000;
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    // Mock: random result — success / warning / failed
+    // Mock: random result code
     const roll = Math.random();
     if (roll < 0.5) {
-      console.log("[App/API] ✅ Verification result: SUCCESS!");
+      console.log("[App/API] ✅ Verification result: PASSED");
       sessionStorage.setItem("captured_id_card", capturedImage);
-      return { success: true };
+      return "PASSED";
+    }
+    if (roll < 0.65) {
+      console.log("[App/API] ⚠️ Verification result: GAUSSIAN_ISSUE");
+      return "GAUSSIAN_ISSUE";
     }
     if (roll < 0.8) {
-      console.log("[App/API] ⚠️ Verification result: WARNING");
-      return {
-        success: false,
-        message: "มีแสงหรือเงาสะท้อนบนบัตร ลองสแกนอีกครั้ง",
-        type: 'warning',
-      };
+      console.log("[App/API] ⚠️ Verification result: MOTION");
+      return "MOTION";
+    }
+    if (roll < 0.9) {
+      console.log("[App/API] ❌ Verification result: RECAPTURE");
+      return "RECAPTURE";
     }
     console.log("[App/API] ❌ Verification result: FAILED");
-    return {
-      success: false,
-      message: "ตรวจสอบข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
-      type: 'failed',
-    };
+    return "FAILED";
   }
 
   const onBack = useCallback(() => {

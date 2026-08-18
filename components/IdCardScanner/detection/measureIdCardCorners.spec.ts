@@ -5,7 +5,7 @@ const makeEdges = (overrides: Partial<ICardEdges> = {}): ICardEdges => ({
   top: { position: 0.15, score: 0.8, slope: 0 },
   right: { position: 0.75, score: 0.8, slope: 0 },
   bottom: { position: 0.85, score: 0.8, slope: 0 },
-  left: { position: 0.10, score: 0.8, slope: 0 },
+  left: { position: 0.1, score: 0.8, slope: 0 },
   ...overrides,
 })
 
@@ -49,8 +49,10 @@ describe('measureIdCardCorners', () => {
         const posX = x / W1
         const posY = y / H1
         const isInterior =
-          posX > edges.left.position && posX < edges.right.position &&
-          posY > edges.top.position && posY < edges.bottom.position
+          posX > edges.left.position &&
+          posX < edges.right.position &&
+          posY > edges.top.position &&
+          posY < edges.bottom.position
         luma[idx] = isInterior ? 200 : 50
       }
     }

@@ -59,7 +59,13 @@ interface IIdCardGuideCanvasProps {
 }
 
 const IdCardGuideCanvas = memo(
-  ({ canvasRef, facePosition = 'bottom-left', isSuccess = false, landscapeAspect = false, scannerStatus }: IIdCardGuideCanvasProps) => {
+  ({
+    canvasRef,
+    facePosition = 'bottom-left',
+    isSuccess = false,
+    landscapeAspect = false,
+    scannerStatus,
+  }: IIdCardGuideCanvasProps) => {
     useEffect(() => {
       const canvas = canvasRef.current
       if (!canvas) return
