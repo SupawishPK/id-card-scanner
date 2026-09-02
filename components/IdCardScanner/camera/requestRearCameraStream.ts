@@ -13,8 +13,6 @@ const requestRearCameraStream = async (): Promise<MediaStream> => {
     audio: false,
     video: {
       facingMode: { ideal: "environment" },
-      width: { min: 1920, ideal: 3840 },
-      height: { min: 1080, ideal: 2160 },
     },
   };
 
