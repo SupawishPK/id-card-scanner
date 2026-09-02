@@ -8,6 +8,8 @@
  * Fallback: if the primary request fails (e.g. device busy), retries with
  * only the facingMode constraint — resolution defaults to device native.
  */
+import selectBestRearCamera from './selectBestRearCamera'
+
 const FOCUS_MODES = ["continuous", "auto", "single-shot"] as const
 
 type FocusMode = (typeof FOCUS_MODES)[number]
@@ -75,7 +77,29 @@ const requestRearCameraStream = async (): Promise<MediaStream> => {
   };
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Open a rear camera first — this grants permission and reveals real device IDs.
+    const seedStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const currentDeviceId = seedStream.getVideoTracks()[0]?.getSettings().deviceId;
+    seedStream.getTracks().forEach((track) => track.stop());
+
+    // Pick the sharpest rear camera (autofocus main sensor over fixed-focus ultrawide).
+    let selectedDeviceId: string | null = null;
+    try {
+      const best = await selectBestRearCamera();
+      if (best && best.deviceId !== currentDeviceId) selectedDeviceId = best.deviceId;
+    } catch {
+      selectedDeviceId = null;
+    }
+
+    const videoConstraints = selectedDeviceId
+      ? {
+          deviceId: { exact: selectedDeviceId },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        }
+      : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
     await applyAutofocus(stream);
     return stream;
   } catch (error) {
