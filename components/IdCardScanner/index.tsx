@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 import CameraAccessOverlay from './ui/CameraAccessOverlay'
+import CameraDebugOverlay from './ui/CameraDebugOverlay'
 import CameraPreviewCanvas from './ui/CameraPreviewCanvas'
 import IdCardScanGuide from './ui/IdCardScanGuide'
 import IdCardScannerFooter from './ui/IdCardScannerFooter'
@@ -49,6 +50,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
     cameraState,
     cameraError,
     cameraErrorType,
+    cameraDiagnostics,
     videoRef,
     guideCanvasRef,
     focusCamera,
@@ -95,6 +97,8 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
       />
 
       <CameraPreviewCanvas videoRef={videoRef} />
+
+      <CameraDebugOverlay diagnostics={cameraDiagnostics} />
 
       <div className="pointer-events-none absolute inset-0 bg-black/5" />
 

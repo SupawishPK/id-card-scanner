@@ -5,7 +5,8 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import classifyCameraError, { type ICameraErrorType } from './classifyCameraError'
 import mapCameraErrorToMessage from './mapCameraErrorToMessage'
 import queryCameraPermissionState from './queryCameraPermissionState'
-import requestRearCameraStream, { applyAutofocus } from './requestRearCameraStream'
+import readCameraDiagnostics, { type ICameraDiagnostics } from './readCameraDiagnostics'
+import requestRearCameraStream, { applyAutofocus, applySingleShotFocus } from './requestRearCameraStream'
 
 const FOCUS_RETRY_INTERVAL_MS = 2500
 
@@ -15,6 +16,7 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   const [cameraState, setCameraState] = useState<ICameraAccessState>('idle')
   const [cameraError, setCameraError] = useState<string>()
   const [cameraErrorType, setCameraErrorType] = useState<ICameraErrorType>()
+  const [cameraDiagnostics, setCameraDiagnostics] = useState<ICameraDiagnostics | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const cameraRequestIdRef = useRef(0)
   const focusTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -35,7 +37,8 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   }, [clearFocusTimer, videoRef])
 
   const focusCamera = useCallback(() => {
-    void applyAutofocus(streamRef.current)
+    void applySingleShotFocus(streamRef.current)
+    window.setTimeout(() => void applyAutofocus(streamRef.current), 900)
   }, [])
 
   const startCamera = useCallback(async () => {
@@ -75,6 +78,7 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
         if (streamRef.current) void applyAutofocus(streamRef.current)
       }, FOCUS_RETRY_INTERVAL_MS)
 
+      setCameraDiagnostics(readCameraDiagnostics(stream))
       setCameraState('ready')
     } catch (error) {
       if (requestId !== cameraRequestIdRef.current) return
@@ -119,6 +123,7 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   }, [clearFocusTimer, startCamera, stopCamera, videoRef])
 
   return {
+    cameraDiagnostics,
     cameraError,
     cameraErrorType,
     cameraState,

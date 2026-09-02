@@ -42,13 +42,35 @@ export const applyAutofocus = async (stream: MediaStream | null): Promise<void> 
   }
 }
 
+/**
+ * Android WebView ignores a continuous-focus reapply, but does answer a
+ * single-shot request — it triggers one real focus sweep. Use on tap so the
+ * camera locks onto the card, then continuous focus resumes tracking.
+ */
+export const applySingleShotFocus = async (stream: MediaStream | null): Promise<void> => {
+  if (!stream) return
+  const track = stream.getVideoTracks()[0]
+  if (!track) return
+
+  try {
+    const capabilities = track.getCapabilities() as IFocusCapabilities
+    if (!capabilities.focusMode?.includes("single-shot")) return
+
+    await track.applyConstraints({
+      advanced: [{ focusMode: "single-shot" }],
+    } as unknown as MediaTrackConstraints)
+  } catch {
+    // Best-effort only.
+  }
+}
+
 const requestRearCameraStream = async (): Promise<MediaStream> => {
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 3840 },
-      height: { ideal: 2160 },
+      width: { min: 1280, ideal: 3840 },
+      height: { min: 720, ideal: 2160 },
     },
   };
 
