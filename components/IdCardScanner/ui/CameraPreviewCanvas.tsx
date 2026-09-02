@@ -2,7 +2,7 @@
 
 import { type RefObject, useEffect, useRef } from 'react'
 
-const MAX_PIXEL_RATIO = 3
+const MAX_PIXEL_RATIO = 2
 
 interface ICameraPreviewCanvasProps {
   videoRef: RefObject<HTMLVideoElement | null>
@@ -50,8 +50,6 @@ const CameraPreviewCanvas = ({ videoRef }: ICameraPreviewCanvasProps) => {
         video.videoWidth > 0 &&
         video.videoHeight > 0
       ) {
-        context.imageSmoothingEnabled = true
-        context.imageSmoothingQuality = 'high'
         // object-fit: cover equivalent — scale to cover the box, crop centrally
         const scale = Math.max(w / video.videoWidth, h / video.videoHeight)
         const sw = w / scale

@@ -8,8 +8,6 @@ import queryCameraPermissionState from './queryCameraPermissionState'
 import readCameraDiagnostics, { type ICameraDiagnostics } from './readCameraDiagnostics'
 import requestRearCameraStream, { applyAutofocus, applySingleShotFocus } from './requestRearCameraStream'
 
-const FOCUS_RETRY_INTERVAL_MS = 2500
-
 type ICameraAccessState = 'idle' | 'requesting' | 'ready' | 'error'
 
 const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
@@ -19,22 +17,13 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   const [cameraDiagnostics, setCameraDiagnostics] = useState<ICameraDiagnostics | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const cameraRequestIdRef = useRef(0)
-  const focusTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
-
-  const clearFocusTimer = useCallback(() => {
-    if (focusTimerRef.current !== undefined) {
-      clearInterval(focusTimerRef.current)
-      focusTimerRef.current = undefined
-    }
-  }, [])
 
   const stopCamera = useCallback(() => {
     cameraRequestIdRef.current += 1
-    clearFocusTimer()
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
-  }, [clearFocusTimer, videoRef])
+  }, [videoRef])
 
   const focusCamera = useCallback(() => {
     void applySingleShotFocus(streamRef.current)
@@ -72,11 +61,7 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
 
       // Autofocus must be (re)applied after the stream is live — Android WebView
       // ignores focusMode set before the first frames render, leaving the feed soft.
-      focusCamera()
-      clearFocusTimer()
-      focusTimerRef.current = setInterval(() => {
-        if (streamRef.current) void applyAutofocus(streamRef.current)
-      }, FOCUS_RETRY_INTERVAL_MS)
+      void applyAutofocus(stream)
 
       setCameraDiagnostics(readCameraDiagnostics(stream))
       setCameraState('ready')
@@ -117,10 +102,9 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
 
     return () => {
       document.removeEventListener('visibilitychange', visibilityChange)
-      clearFocusTimer()
       stopCamera()
     }
-  }, [clearFocusTimer, startCamera, stopCamera, videoRef])
+  }, [startCamera, stopCamera, videoRef])
 
   return {
     cameraDiagnostics,
