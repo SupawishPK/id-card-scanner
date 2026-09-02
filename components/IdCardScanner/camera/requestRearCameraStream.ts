@@ -12,31 +12,31 @@ const requestRearCameraStream = async (): Promise<MediaStream> => {
   const constraints: MediaStreamConstraints = {
     audio: false,
     video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 3840 },
-      height: { ideal: 2160 },
+      facingMode: { ideal: "environment" },
+      width: { min: 1920, ideal: 3840 },
+      height: { min: 1080, ideal: 2160 },
     },
-  }
+  };
 
   try {
-    return await navigator.mediaDevices.getUserMedia(constraints)
+    return await navigator.mediaDevices.getUserMedia(constraints);
   } catch (error) {
     if (
       error instanceof DOMException &&
-      (error.name === 'NotAllowedError' ||
-        error.name === 'PermissionDeniedError' ||
-        error.name === 'NotFoundError' ||
-        error.name === 'DevicesNotFoundError' ||
-        error.name === 'NotReadableError' ||
-        error.name === 'TrackStartError')
+      (error.name === "NotAllowedError" ||
+        error.name === "PermissionDeniedError" ||
+        error.name === "NotFoundError" ||
+        error.name === "DevicesNotFoundError" ||
+        error.name === "NotReadableError" ||
+        error.name === "TrackStartError")
     ) {
-      throw error
+      throw error;
     }
     return navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: { ideal: 'environment' } },
-    })
+      video: { facingMode: { ideal: "environment" } },
+    });
   }
-}
+};
 
-export default requestRearCameraStream
+export default requestRearCameraStream;
