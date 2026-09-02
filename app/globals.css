@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --color-tmn-primary: #FF5A00;
-  --color-tmn-bg: #FDFDFD;
+  --font-sans: var(--font-prompt), Arial, sans-serif;
+  --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
+  --animate-star-movement-top: star-movement-top linear infinite alternate;
 }
 
 :root {
@@ -10,7 +11,9 @@
   font-family: var(--font-prompt), Arial, sans-serif;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html,
 body {
@@ -19,40 +22,28 @@ body {
   background: #020617;
 }
 
-button { -webkit-tap-highlight-color: transparent; }
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-  }
+button {
+  -webkit-tap-highlight-color: transparent;
 }
-@keyframes progress-shimmer {
+
+@keyframes star-movement-bottom {
   0% {
-    transform: translateX(-100%);
+    transform: translate(0%, 0%);
+    opacity: 1;
   }
   100% {
-    transform: translateX(100%);
+    transform: translate(-100%, 0%);
+    opacity: 0;
   }
 }
 
-.animate-progress-shimmer {
-  animation: progress-shimmer 1s infinite linear;
-}
-
-@keyframes error-progress {
+@keyframes star-movement-top {
   0% {
-    width: 100%;
+    transform: translate(0%, 0%);
+    opacity: 1;
   }
   100% {
-    width: 0%;
+    transform: translate(100%, 0%);
+    opacity: 0;
   }
-}
-
-.animate-error-progress {
-  animation: error-progress 2.5s linear forwards;
 }

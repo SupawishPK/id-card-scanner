@@ -1,32 +1,28 @@
 {
-  "name": "production-id-card-scanner",
+  "name": "camera-picker",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "browser-image-compression": "^2.0.2",
-    "clsx": "^2.1.1",
+    "@gsap/react": "^2.1.2",
+    "gsap": "^3.13.0",
     "next": "^16.2.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "tailwind-merge": "^3.6.0"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "jsdom": "^30.0.1",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.9.0",
-    "vitest": "^4.1.11"
+    "typescript": "^5.9.0"
   },
   "overrides": {
     "postcss": "$postcss"
