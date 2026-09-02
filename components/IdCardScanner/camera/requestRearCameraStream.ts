@@ -1,7 +1,9 @@
 /**
- * NOTE: Request the rear camera at a resolution sharp enough for OCR/edge
- * detection. The `ideal` value is a hint — the browser delivers the highest
- * resolution it supports up to 1080p (falling back gracefully, unlike `exact`).
+ * NOTE: Request the rear camera at the highest resolution the device supports.
+ *
+ * Uses `ideal` constraints far above typical hardware so the browser delivers
+ * the maximum available (e.g. 4K / 3840×2160) without failing on devices that
+ * cap lower — `ideal` falls back gracefully, unlike `exact`.
  *
  * Fallback: if the primary request fails (e.g. device busy), retries with
  * only the facingMode constraint — resolution defaults to device native.
@@ -19,7 +21,8 @@ interface IFocusCapabilities extends MediaTrackCapabilities {
  * soft until the user taps. Force continuous autofocus when the hardware
  * exposes it — best-effort only, never blocking the stream on failure.
  */
-const applyAutofocus = async (stream: MediaStream): Promise<void> => {
+export const applyAutofocus = async (stream: MediaStream | null): Promise<void> => {
+  if (!stream) return
   const track = stream.getVideoTracks()[0]
   if (!track) return
 
@@ -44,8 +47,8 @@ const requestRearCameraStream = async (): Promise<MediaStream> => {
     audio: false,
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
     },
   };
 

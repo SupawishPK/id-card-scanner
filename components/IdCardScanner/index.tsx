@@ -51,6 +51,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
     cameraErrorType,
     videoRef,
     guideCanvasRef,
+    focusCamera,
     retryCamera,
     retryScan,
     scannerStatus,
@@ -78,6 +79,7 @@ const IdCardScanner = ({ onBack, onSuccess, onVerify }: IIdCardScannerProps) => 
         'relative isolate flex h-dvh w-full flex-col overflow-hidden bg-black',
         isUpsideDown && 'rotate-180',
       )}
+      onPointerDown={focusCamera}
     >
       {/* NOTE: The video stays mounted (stream source, detection sampling, ROI rect mapping)
           but invisible — the camera is displayed through CameraPreviewCanvas so the

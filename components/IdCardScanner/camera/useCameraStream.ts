@@ -5,7 +5,9 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import classifyCameraError, { type ICameraErrorType } from './classifyCameraError'
 import mapCameraErrorToMessage from './mapCameraErrorToMessage'
 import queryCameraPermissionState from './queryCameraPermissionState'
-import requestRearCameraStream from './requestRearCameraStream'
+import requestRearCameraStream, { applyAutofocus } from './requestRearCameraStream'
+
+const FOCUS_RETRY_INTERVAL_MS = 2500
 
 type ICameraAccessState = 'idle' | 'requesting' | 'ready' | 'error'
 
@@ -15,13 +17,26 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
   const [cameraErrorType, setCameraErrorType] = useState<ICameraErrorType>()
   const streamRef = useRef<MediaStream | null>(null)
   const cameraRequestIdRef = useRef(0)
+  const focusTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+
+  const clearFocusTimer = useCallback(() => {
+    if (focusTimerRef.current !== undefined) {
+      clearInterval(focusTimerRef.current)
+      focusTimerRef.current = undefined
+    }
+  }, [])
 
   const stopCamera = useCallback(() => {
     cameraRequestIdRef.current += 1
+    clearFocusTimer()
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
-  }, [videoRef])
+  }, [clearFocusTimer, videoRef])
+
+  const focusCamera = useCallback(() => {
+    void applyAutofocus(streamRef.current)
+  }, [])
 
   const startCamera = useCallback(async () => {
     stopCamera()
@@ -51,6 +66,14 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
       await video.play()
 
       if (requestId !== cameraRequestIdRef.current) return
+
+      // Autofocus must be (re)applied after the stream is live — Android WebView
+      // ignores focusMode set before the first frames render, leaving the feed soft.
+      focusCamera()
+      clearFocusTimer()
+      focusTimerRef.current = setInterval(() => {
+        if (streamRef.current) void applyAutofocus(streamRef.current)
+      }, FOCUS_RETRY_INTERVAL_MS)
 
       setCameraState('ready')
     } catch (error) {
@@ -90,14 +113,16 @@ const useCameraStream = (videoRef: RefObject<HTMLVideoElement | null>) => {
 
     return () => {
       document.removeEventListener('visibilitychange', visibilityChange)
+      clearFocusTimer()
       stopCamera()
     }
-  }, [startCamera, stopCamera, videoRef])
+  }, [clearFocusTimer, startCamera, stopCamera, videoRef])
 
   return {
     cameraError,
     cameraErrorType,
     cameraState,
+    focusCamera,
     retryCamera: startCamera,
   }
 }
