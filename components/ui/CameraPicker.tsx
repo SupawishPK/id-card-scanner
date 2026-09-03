@@ -1,6 +1,6 @@
 'use client';
 
-import type { ICameraCandidate } from '@/lib/camera/types';
+import type { ICameraCandidate, IZoomRange, LensKind } from '@/lib/camera/types';
 
 interface ICameraPickerProps {
   cameras: ICameraCandidate[];
@@ -9,12 +9,23 @@ interface ICameraPickerProps {
   onSelect: (camera: ICameraCandidate) => void;
 }
 
-const CameraPicker = ({
-  cameras,
-  loading,
-  selectedDeviceId,
-  onSelect,
-}: ICameraPickerProps) => {
+const LENS_LABEL: Partial<Record<LensKind, string>> = {
+  'main-wide': 'กล้องหลัก',
+  'ultra-wide': 'Ultra-wide',
+};
+
+const LENS_BADGE_CLASS: Partial<Record<LensKind, string>> = {
+  'main-wide': 'bg-emerald-500/15 text-emerald-300',
+  'ultra-wide': 'bg-amber-500/15 text-amber-300',
+};
+
+const formatZoom = (zoom: IZoomRange): string => {
+  const min = zoom.min.toFixed(1).replace(/\.0$/, '');
+  const max = zoom.max.toFixed(1).replace(/\.0$/, '');
+  return `${min}–${max}×`;
+};
+
+const CameraPicker = ({ cameras, loading, selectedDeviceId, onSelect }: ICameraPickerProps) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-400">
@@ -32,6 +43,8 @@ const CameraPicker = ({
     <ul className="flex max-h-[40dvh] flex-col gap-2 overflow-auto">
       {cameras.map((camera) => {
         const active = camera.deviceId === selectedDeviceId;
+        const lensLabel = LENS_LABEL[camera.lensKind];
+        const lensBadgeClass = LENS_BADGE_CLASS[camera.lensKind];
         const megapixels =
           camera.maxResolution > 0 ? `${(camera.maxResolution / 1_000_000).toFixed(1)} MP` : null;
 
@@ -42,20 +55,34 @@ const CameraPicker = ({
               onClick={() => onSelect(camera)}
               className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
                 active
-                  ? 'border-[#ff5a00] bg-[#ff5a00]/15 text-white'
+                  ? 'border-accent bg-accent/15 text-white'
                   : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/25'
               }`}
             >
-              <span className="flex flex-col">
-                <span className="text-sm font-medium">{camera.label || `กล้องหลัง ${camera.index}`}</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-medium">
+                  {camera.label || `กล้องหลัง ${camera.index}`}
+                </span>
                 <span className="text-xs text-slate-400">กล้องหลัง {camera.index}</span>
               </span>
               <span className="flex shrink-0 items-center gap-2 text-xs">
+                {lensLabel && lensBadgeClass && (
+                  <span className={`rounded-full px-2 py-0.5 ${lensBadgeClass}`}>{lensLabel}</span>
+                )}
+                {camera.zoom && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-slate-300">
+                    {formatZoom(camera.zoom)}
+                  </span>
+                )}
                 {camera.hasAutofocus && (
-                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">AF</span>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">
+                    AF
+                  </span>
                 )}
                 {megapixels && (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-slate-300">{megapixels}</span>
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-slate-300">
+                    {megapixels}
+                  </span>
                 )}
               </span>
             </button>

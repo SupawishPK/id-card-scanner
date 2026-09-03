@@ -69,7 +69,7 @@ const SplitText: React.FC<SplitTextProps> = ({
       if (el._rbsplitInstance) {
         try {
           el._rbsplitInstance.revert();
-        } catch (_) {}
+        } catch {}
         el._rbsplitInstance = undefined;
       }
 
@@ -88,8 +88,10 @@ const SplitText: React.FC<SplitTextProps> = ({
       const assignTargets = (self: GSAPSplitText) => {
         if (splitType.includes('chars') && (self as GSAPSplitText).chars?.length)
           targets = (self as GSAPSplitText).chars;
-        if (!targets.length && splitType.includes('words') && self.words.length) targets = self.words;
-        if (!targets.length && splitType.includes('lines') && self.lines.length) targets = self.lines;
+        if (!targets.length && splitType.includes('words') && self.words.length)
+          targets = self.words;
+        if (!targets.length && splitType.includes('lines') && self.lines.length)
+          targets = self.lines;
         if (!targets.length) targets = self.chars || self.words || self.lines;
       };
       const splitInstance = new GSAPSplitText(el, {
@@ -134,7 +136,7 @@ const SplitText: React.FC<SplitTextProps> = ({
         });
         try {
           splitInstance.revert();
-        } catch (_) {}
+        } catch {}
         el._rbsplitInstance = undefined;
       };
     },

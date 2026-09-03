@@ -3,21 +3,14 @@
  *
  * Device labels are only revealed after camera permission has been granted,
  * so we first open a throwaway rear stream (which triggers the prompt), then
- * probe each video input to read its facingMode and focus capabilities.
+ * probe each video input to read its facingMode, focus and zoom capabilities.
  * Front-facing cameras are filtered out; the remaining list is ordered and
  * each entry gets an `index` (0-based) within the rear-camera group.
  */
 
+import { FOCUS_MODES, type ICameraCapabilities } from './capabilities';
+import { classifyLens } from './lens';
 import type { ICameraCandidate } from './types';
-
-interface ICameraCapabilities extends MediaTrackCapabilities {
-  facingMode?: string[];
-  focusMode?: string[];
-  width?: { max?: number };
-  height?: { max?: number };
-}
-
-const FOCUSABLE_MODES = ['continuous', 'auto', 'single-shot'];
 
 const ensurePermission = async (): Promise<void> => {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -49,11 +42,22 @@ const probeCamera = async (
     if (facing.length === 0 && /front/i.test(label)) return null;
 
     const focusModes = capabilities.focusMode ?? [];
-    const hasAutofocus = focusModes.some((mode) => FOCUSABLE_MODES.includes(mode));
+    const zoom = capabilities.zoom ?? null;
     const maxWidth = capabilities.width?.max ?? 0;
     const maxHeight = capabilities.height?.max ?? 0;
 
-    return { deviceId, label, hasAutofocus, maxResolution: maxWidth * maxHeight };
+    return {
+      deviceId,
+      label,
+      facingMode: facing,
+      focusModes,
+      hasAutofocus: focusModes.some((mode) => FOCUS_MODES.includes(mode)),
+      zoom,
+      maxWidth,
+      maxHeight,
+      maxResolution: maxWidth * maxHeight,
+      lensKind: classifyLens(zoom),
+    };
   } finally {
     stream.getTracks().forEach((track) => track.stop());
   }

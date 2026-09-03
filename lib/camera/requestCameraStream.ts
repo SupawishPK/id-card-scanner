@@ -3,25 +3,14 @@
  * no deviceId is given) and apply continuous autofocus best-effort.
  */
 
-const FOCUS_MODES = ['continuous', 'auto', 'single-shot'] as const;
+import { FOCUS_MODES, type ICameraCapabilities, type IFocusConstraint } from './capabilities';
 
-type FocusMode = (typeof FOCUS_MODES)[number];
-
-interface IFocusCapabilities extends MediaTrackCapabilities {
-  focusMode?: FocusMode[];
-}
-
-interface IFocusConstraint extends MediaTrackConstraintSet {
-  focusMode?: FocusMode;
-}
-
-export const applyAutofocus = async (stream: MediaStream | null): Promise<void> => {
-  if (!stream) return;
+export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
   const track = stream.getVideoTracks()[0];
   if (!track) return;
 
   try {
-    const capabilities = track.getCapabilities() as IFocusCapabilities;
+    const capabilities = track.getCapabilities() as ICameraCapabilities;
     const modes = capabilities.focusMode;
     if (!modes || modes.length === 0) return;
 
@@ -36,9 +25,11 @@ export const applyAutofocus = async (stream: MediaStream | null): Promise<void> 
 };
 
 const requestCameraStream = async (deviceId?: string): Promise<MediaStream> => {
-  const video: MediaTrackConstraints = deviceId
-    ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-    : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+  const video: MediaTrackConstraints = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
+  };
 
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
   await applyAutofocus(stream);

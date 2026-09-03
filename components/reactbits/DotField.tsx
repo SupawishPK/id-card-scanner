@@ -249,7 +249,7 @@ const DotField = memo(
 
           if (p.sparkle) {
             const hash = ((i * 2654435761) ^ (frameCount >> 3)) >>> 0;
-            if ((hash % 100) < 3) {
+            if (hash % 100 < 3) {
               ctx!.moveTo(drawX + rad * 1.8, drawY);
               ctx!.arc(drawX, drawY, rad * 1.8, 0, TWO_PI);
             } else {
@@ -284,7 +284,6 @@ const DotField = memo(
         window.removeEventListener('resize', resize);
         window.removeEventListener('mousemove', onMouseMove);
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {

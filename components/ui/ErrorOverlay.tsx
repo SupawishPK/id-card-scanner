@@ -15,10 +15,10 @@ const ErrorOverlay = ({ message, onRetry }: IErrorOverlayProps) => {
       {onRetry && (
         <StarBorder
           onClick={onRetry}
-          color="#ff5a00"
+          color="var(--color-accent)"
           backgroundColor="rgba(2, 6, 23, 0.6)"
           textColor="#ffffff"
-          borderColor="rgba(255, 90, 0, 0.5)"
+          borderColor="var(--color-accent)"
         >
           ลองอีกครั้ง
         </StarBorder>

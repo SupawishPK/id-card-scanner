@@ -2,16 +2,19 @@
 
 import { useCallback, useState } from 'react';
 
-import DotField from '@/components/reactbits/DotField';
 import Magnet from '@/components/reactbits/Magnet';
 import SplitText from '@/components/reactbits/SplitText';
 import StarBorder from '@/components/reactbits/StarBorder';
+import CameraBackdrop from '@/components/ui/CameraBackdrop';
 import CameraPicker from '@/components/ui/CameraPicker';
+import CameraSwitchSheet from '@/components/ui/CameraSwitchSheet';
 import ErrorOverlay from '@/components/ui/ErrorOverlay';
+import IndexPicker from '@/components/ui/IndexPicker';
+import LiveControls from '@/components/ui/LiveControls';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
 import ModeSelector from '@/components/ui/ModeSelector';
 import useCamera from '@/hooks/useCamera';
-import type { CameraMode, ICameraCandidate } from '@/lib/camera/types';
+import type { ICameraCandidate } from '@/lib/camera/types';
 
 const Home = () => {
   const {
@@ -25,22 +28,13 @@ const Home = () => {
     selectedIndex,
     videoRef,
     openCamera,
-    prepareCameras,
-    setMode,
+    selectMode,
     setSelectedDeviceId,
     setSelectedIndex,
     switchCamera,
   } = useCamera();
 
   const [showPicker, setShowPicker] = useState(false);
-
-  const handleModeChange = useCallback(
-    (next: CameraMode) => {
-      setMode(next);
-      if (next !== 'best') void prepareCameras();
-    },
-    [prepareCameras, setMode],
-  );
 
   const handleSwitch = useCallback(
     (camera: ICameraCandidate) => {
@@ -68,15 +62,7 @@ const Home = () => {
 
       {screen === 'intro' && (
         <>
-          <div className="absolute inset-0">
-            <DotField
-              dotRadius={1.2}
-              dotSpacing={18}
-              gradientFrom="rgba(255, 90, 0, 0.22)"
-              gradientTo="rgba(30, 41, 59, 0.12)"
-              glowColor="#0f172a"
-            />
-          </div>
+          <CameraBackdrop />
           <div className="relative z-10 flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
             <SplitText
               text="เปิดกล้อง"
@@ -85,32 +71,15 @@ const Home = () => {
               className="text-4xl font-semibold tracking-tight sm:text-5xl"
             />
 
-            <ModeSelector mode={mode} onChange={handleModeChange} />
+            <ModeSelector mode={mode} onChange={selectMode} />
 
             {mode === 'index' && (
-              <div className="flex flex-col items-center gap-3">
-                <p className="text-sm text-slate-400">เลือกกล้องหลังตาม index</p>
-                {camerasLoading ? (
-                  <p className="text-sm text-slate-500">กำลังโหลดรายการกล้อง…</p>
-                ) : cameras.length > 0 ? (
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {cameras.map((camera) => (
-                      <button
-                        key={camera.deviceId}
-                        type="button"
-                        onClick={() => setSelectedIndex(camera.index)}
-                        className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                          selectedIndex === camera.index
-                            ? 'border-[#ff5a00] bg-[#ff5a00]/15 text-white'
-                            : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/25'
-                        }`}
-                      >
-                        กล้องหลัง {camera.index}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <IndexPicker
+                cameras={cameras}
+                loading={camerasLoading}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
+              />
             )}
 
             {mode === 'manual' && (
@@ -130,10 +99,10 @@ const Home = () => {
             <Magnet padding={80} magnetStrength={2}>
               <StarBorder
                 onClick={() => void openCamera()}
-                color="#ff5a00"
+                color="var(--color-accent)"
                 backgroundColor="rgba(2, 6, 23, 0.6)"
                 textColor="#ffffff"
-                borderColor="rgba(255, 90, 0, 0.5)"
+                borderColor="var(--color-accent)"
               >
                 เปิดกล้อง
               </StarBorder>
@@ -150,15 +119,7 @@ const Home = () => {
 
       {screen === 'error' && (
         <div className="absolute inset-0 z-20">
-          <div className="absolute inset-0">
-            <DotField
-              dotRadius={1.2}
-              dotSpacing={18}
-              gradientFrom="rgba(255, 90, 0, 0.22)"
-              gradientTo="rgba(30, 41, 59, 0.12)"
-              glowColor="#0f172a"
-            />
-          </div>
+          <CameraBackdrop />
           <div className="relative grid min-h-dvh place-items-center p-6">
             <ErrorOverlay message={error?.message} onRetry={() => void openCamera()} />
           </div>
@@ -167,37 +128,17 @@ const Home = () => {
 
       {screen === 'live' && (
         <>
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 bg-gradient-to-b from-black/70 to-transparent p-4">
-            <span className="truncate text-sm text-white/90">
-              {activeCamera?.label || 'กล้องหลัง'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowPicker(true)}
-              className="shrink-0 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-sm text-white backdrop-blur"
-            >
-              สลับกล้อง
-            </button>
-          </div>
-
+          <LiveControls
+            label={activeCamera?.label || 'กล้องหลัง'}
+            onSwitch={() => setShowPicker(true)}
+          />
           {showPicker && (
-            <div className="absolute inset-0 z-30 flex flex-col bg-black/80 p-6 backdrop-blur">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold">เลือกกล้องหลัง</h2>
-                <button
-                  type="button"
-                  onClick={() => setShowPicker(false)}
-                  className="rounded-full border border-white/20 px-4 py-2 text-sm text-white"
-                >
-                  ปิด
-                </button>
-              </div>
-              <CameraPicker
-                cameras={cameras}
-                selectedDeviceId={activeCamera?.deviceId}
-                onSelect={handleSwitch}
-              />
-            </div>
+            <CameraSwitchSheet
+              cameras={cameras}
+              selectedDeviceId={activeCamera?.deviceId}
+              onSelect={handleSwitch}
+              onClose={() => setShowPicker(false)}
+            />
           )}
         </>
       )}
