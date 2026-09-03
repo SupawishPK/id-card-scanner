@@ -41,6 +41,23 @@ interface ISpecRow {
   value: string;
 }
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const sortObject = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(sortObject);
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, sortObject(value[key])]),
+    );
+  }
+  return value;
+};
+
+const stringify = (value: unknown): string => JSON.stringify(sortObject(value), null, 2);
+
 const buildSpecRows = (camera: ICameraCandidate): ISpecRow[] => {
   const cap = camera.capabilities;
   const settings = camera.settings;
@@ -89,14 +106,34 @@ const CameraSpec = ({ camera }: { camera: ICameraCandidate }) => {
   const rows = buildSpecRows(camera);
 
   return (
-    <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1.5 text-xs">
-      {rows.map((row) => (
-        <Fragment key={row.label}>
-          <dt className="text-slate-500">{row.label}</dt>
-          <dd className="break-words text-slate-300">{row.value}</dd>
-        </Fragment>
-      ))}
-    </dl>
+    <div>
+      <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-1.5 text-xs">
+        {rows.map((row) => (
+          <Fragment key={row.label}>
+            <dt className="text-slate-500">{row.label}</dt>
+            <dd className="break-words text-slate-300">{row.value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+
+      <div className="mt-3 border-t border-white/10 pt-3">
+        <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          getCapabilities()
+        </h4>
+        <pre className="max-h-48 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] leading-relaxed text-emerald-300/90">
+          {stringify(camera.capabilities)}
+        </pre>
+      </div>
+
+      <div className="mt-2">
+        <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          getSettings()
+        </h4>
+        <pre className="max-h-48 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] leading-relaxed text-sky-300/90">
+          {stringify(camera.settings)}
+        </pre>
+      </div>
+    </div>
   );
 };
 
