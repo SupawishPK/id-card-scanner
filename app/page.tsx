@@ -13,6 +13,7 @@ import IndexPicker from '@/components/ui/IndexPicker';
 import LiveControls from '@/components/ui/LiveControls';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
 import ModeSelector from '@/components/ui/ModeSelector';
+import ResolutionSelector from '@/components/ui/ResolutionSelector';
 import useCamera from '@/hooks/useCamera';
 import type { ICameraCandidate } from '@/lib/camera/types';
 
@@ -23,12 +24,15 @@ const Home = () => {
     camerasLoading,
     error,
     mode,
+    resolution,
     screen,
     selectedDeviceId,
     selectedIndex,
     videoRef,
     openCamera,
+    prepareCameras,
     selectMode,
+    setResolution,
     setSelectedDeviceId,
     setSelectedIndex,
     switchCamera,
@@ -43,6 +47,16 @@ const Home = () => {
     },
     [switchCamera],
   );
+
+  const handleSwitchAuto = useCallback(() => {
+    setShowPicker(false);
+    void switchCamera(null);
+  }, [switchCamera]);
+
+  const handleOpenSwitch = useCallback(() => {
+    setShowPicker(true);
+    if (cameras.length === 0) void prepareCameras();
+  }, [cameras.length, prepareCameras]);
 
   return (
     <main className="relative min-h-dvh w-full overflow-hidden bg-slate-950 text-white">
@@ -72,6 +86,8 @@ const Home = () => {
             />
 
             <ModeSelector mode={mode} onChange={selectMode} />
+
+            <ResolutionSelector value={resolution} onChange={setResolution} />
 
             {mode === 'index' && (
               <IndexPicker
@@ -129,14 +145,17 @@ const Home = () => {
       {screen === 'live' && (
         <>
           <LiveControls
-            label={activeCamera?.label || 'กล้องหลัง'}
-            onSwitch={() => setShowPicker(true)}
+            label={activeCamera?.label || 'กล้องอัตโนมัติ'}
+            onSwitch={handleOpenSwitch}
           />
           {showPicker && (
             <CameraSwitchSheet
               cameras={cameras}
+              loading={camerasLoading}
               selectedDeviceId={activeCamera?.deviceId}
+              isAuto={!activeCamera}
               onSelect={handleSwitch}
+              onSelectAuto={handleSwitchAuto}
               onClose={() => setShowPicker(false)}
             />
           )}

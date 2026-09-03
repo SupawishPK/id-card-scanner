@@ -3,6 +3,7 @@
 import type { CameraMode } from '@/lib/camera/types';
 
 const MODES: { value: CameraMode; label: string }[] = [
+  { value: 'auto', label: 'อัตโนมัติ' },
   { value: 'best', label: 'ดีที่สุด' },
   { value: 'index', label: 'ตาม index' },
   { value: 'manual', label: 'เลือกเอง' },

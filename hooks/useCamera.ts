@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import classifyCameraError from '@/lib/camera/classifyCameraError';
 import enumerateRearCameras from '@/lib/camera/enumerateRearCameras';
 import requestCameraStream from '@/lib/camera/requestCameraStream';
+import type { ResolutionPreset } from '@/lib/camera/resolution';
 import selectBestRearCamera from '@/lib/camera/selectBestRearCamera';
 import type {
   CameraErrorKind,
@@ -33,7 +34,8 @@ const useCamera = () => {
   const requestIdRef = useRef(0);
 
   const [screen, setScreen] = useState<CameraScreen>('intro');
-  const [mode, setMode] = useState<CameraMode>('best');
+  const [mode, setMode] = useState<CameraMode>('auto');
+  const [resolution, setResolution] = useState<ResolutionPreset>('4k');
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [camerasLoading, setCamerasLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -63,11 +65,11 @@ const useCamera = () => {
   }, []);
 
   const startStream = useCallback(
-    async (candidate: ICameraCandidate): Promise<void> => {
+    async (candidate: ICameraCandidate | null): Promise<void> => {
       stopCamera();
       const requestId = requestIdRef.current;
 
-      const stream = await requestCameraStream(candidate.deviceId);
+      const stream = await requestCameraStream(candidate?.deviceId, resolution);
       if (requestId !== requestIdRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -79,7 +81,7 @@ const useCamera = () => {
       setActiveCamera(candidate);
       setScreen('live');
     },
-    [attachStream, stopCamera],
+    [attachStream, resolution, stopCamera],
   );
 
   const handleError = useCallback(async (err: unknown): Promise<void> => {
@@ -118,7 +120,7 @@ const useCamera = () => {
   const selectMode = useCallback(
     (next: CameraMode): void => {
       setMode(next);
-      if (next !== 'best') void prepareCameras();
+      if (next === 'index' || next === 'manual') void prepareCameras();
     },
     [prepareCameras],
   );
@@ -128,6 +130,11 @@ const useCamera = () => {
     setError(null);
 
     try {
+      if (mode === 'auto') {
+        await startStream(null);
+        return;
+      }
+
       const list = await enumerateRearCameras();
       setCameras(list);
 
@@ -139,10 +146,10 @@ const useCamera = () => {
       await handleError(err);
       setScreen('error');
     }
-  }, [handleError, resolveDevice, startStream]);
+  }, [handleError, mode, resolveDevice, startStream]);
 
   const switchCamera = useCallback(
-    async (candidate: ICameraCandidate): Promise<void> => {
+    async (candidate: ICameraCandidate | null): Promise<void> => {
       setScreen('loading');
       setError(null);
 
@@ -168,12 +175,15 @@ const useCamera = () => {
     camerasLoading,
     error,
     mode,
+    resolution,
     screen,
     selectedDeviceId,
     selectedIndex,
     videoRef,
     openCamera,
+    prepareCameras,
     selectMode,
+    setResolution,
     setSelectedDeviceId,
     setSelectedIndex,
     switchCamera,

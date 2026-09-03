@@ -6,15 +6,21 @@ import CameraPicker from './CameraPicker';
 
 interface ICameraSwitchSheetProps {
   cameras: ICameraCandidate[];
+  loading?: boolean;
   selectedDeviceId?: string | null;
+  isAuto: boolean;
   onSelect: (camera: ICameraCandidate) => void;
+  onSelectAuto: () => void;
   onClose: () => void;
 }
 
 const CameraSwitchSheet = ({
   cameras,
+  loading,
   selectedDeviceId,
+  isAuto,
   onSelect,
+  onSelectAuto,
   onClose,
 }: ICameraSwitchSheetProps) => {
   return (
@@ -29,7 +35,29 @@ const CameraSwitchSheet = ({
           ปิด
         </button>
       </div>
-      <CameraPicker cameras={cameras} selectedDeviceId={selectedDeviceId} onSelect={onSelect} />
+
+      <button
+        type="button"
+        onClick={onSelectAuto}
+        className={`mb-2 flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+          isAuto
+            ? 'border-accent bg-accent/10 text-white'
+            : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/25'
+        }`}
+      >
+        <span className="flex flex-col">
+          <span className="text-sm font-medium">อัตโนมัติ</span>
+          <span className="text-xs text-slate-400">ให้ระบบเลือกกล้องหลังเอง</span>
+        </span>
+        <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300">Auto</span>
+      </button>
+
+      <CameraPicker
+        cameras={cameras}
+        loading={loading}
+        selectedDeviceId={selectedDeviceId}
+        onSelect={onSelect}
+      />
     </div>
   );
 };

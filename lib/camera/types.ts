@@ -1,6 +1,6 @@
 import type { ICameraCapabilities, ICameraSettings } from './capabilities';
 
-export type CameraMode = 'best' | 'index' | 'manual';
+export type CameraMode = 'auto' | 'best' | 'index' | 'manual';
 
 export type CameraScreen = 'intro' | 'loading' | 'live' | 'error';
 

@@ -4,6 +4,7 @@
  */
 
 import { FOCUS_MODES, type ICameraCapabilities, type IFocusConstraint } from './capabilities';
+import { RESOLUTION_PRESETS, type ResolutionPreset } from './resolution';
 
 export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
   const track = stream.getVideoTracks()[0];
@@ -24,10 +25,15 @@ export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
   }
 };
 
-const requestCameraStream = async (deviceId?: string): Promise<MediaStream> => {
+const requestCameraStream = async (
+  deviceId?: string,
+  preset: ResolutionPreset = '4k',
+): Promise<MediaStream> => {
+  const { width, height } = RESOLUTION_PRESETS[preset];
+
   const video: MediaTrackConstraints = {
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
+    width: { ideal: 1920, max: width },
+    height: { ideal: 1080, max: height },
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
   };
 
