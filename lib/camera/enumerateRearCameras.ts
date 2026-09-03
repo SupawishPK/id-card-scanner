@@ -3,12 +3,12 @@
  *
  * Device labels are only revealed after camera permission has been granted,
  * so we first open a throwaway rear stream (which triggers the prompt), then
- * probe each video input to read its facingMode, focus and zoom capabilities.
- * Front-facing cameras are filtered out; the remaining list is ordered and
- * each entry gets an `index` (0-based) within the rear-camera group.
+ * probe each video input to read its facingMode, focus, zoom and other
+ * capabilities. Front-facing cameras are filtered out; the remaining list is
+ * ordered and each entry gets an `index` (0-based) within the rear-camera group.
  */
 
-import { FOCUS_MODES, type ICameraCapabilities } from './capabilities';
+import { FOCUSABLE_MODES, type ICameraCapabilities, type ICameraSettings } from './capabilities';
 import { classifyLens } from './lens';
 import type { ICameraCandidate } from './types';
 
@@ -36,27 +36,24 @@ const probeCamera = async (
   try {
     const track = stream.getVideoTracks()[0];
     const capabilities = track.getCapabilities() as ICameraCapabilities;
+    const settings = track.getSettings() as ICameraSettings;
 
     const facing = capabilities.facingMode ?? [];
     if (facing.includes('user')) return null;
     if (facing.length === 0 && /front/i.test(label)) return null;
 
     const focusModes = capabilities.focusMode ?? [];
-    const zoom = capabilities.zoom ?? null;
     const maxWidth = capabilities.width?.max ?? 0;
     const maxHeight = capabilities.height?.max ?? 0;
 
     return {
       deviceId,
       label,
-      facingMode: facing,
-      focusModes,
-      hasAutofocus: focusModes.some((mode) => FOCUS_MODES.includes(mode)),
-      zoom,
-      maxWidth,
-      maxHeight,
+      lensKind: classifyLens(capabilities.zoom ?? null),
+      hasAutofocus: focusModes.some((mode) => FOCUSABLE_MODES.includes(mode)),
       maxResolution: maxWidth * maxHeight,
-      lensKind: classifyLens(zoom),
+      capabilities,
+      settings,
     };
   } finally {
     stream.getTracks().forEach((track) => track.stop());

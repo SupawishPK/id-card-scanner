@@ -1,6 +1,9 @@
 'use client';
 
-import type { ICameraCandidate, IZoomRange, LensKind } from '@/lib/camera/types';
+import type { IZoomRange } from '@/lib/camera/capabilities';
+import type { ICameraCandidate, LensKind } from '@/lib/camera/types';
+
+import CameraSpec from './CameraSpec';
 
 interface ICameraPickerProps {
   cameras: ICameraCandidate[];
@@ -40,24 +43,26 @@ const CameraPicker = ({ cameras, loading, selectedDeviceId, onSelect }: ICameraP
   }
 
   return (
-    <ul className="flex max-h-[40dvh] flex-col gap-2 overflow-auto">
+    <ul className="flex max-h-[60dvh] flex-col gap-2 overflow-auto">
       {cameras.map((camera) => {
         const active = camera.deviceId === selectedDeviceId;
         const lensLabel = LENS_LABEL[camera.lensKind];
         const lensBadgeClass = LENS_BADGE_CLASS[camera.lensKind];
+        const zoom = camera.capabilities.zoom;
         const megapixels =
           camera.maxResolution > 0 ? `${(camera.maxResolution / 1_000_000).toFixed(1)} MP` : null;
 
         return (
-          <li key={camera.deviceId}>
+          <li
+            key={camera.deviceId}
+            className={`rounded-xl border transition-colors ${
+              active ? 'border-accent bg-accent/10' : 'border-white/10 bg-white/5'
+            }`}
+          >
             <button
               type="button"
               onClick={() => onSelect(camera)}
-              className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
-                active
-                  ? 'border-accent bg-accent/15 text-white'
-                  : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/25'
-              }`}
+              className="flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left"
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-sm font-medium">
@@ -69,9 +74,9 @@ const CameraPicker = ({ cameras, loading, selectedDeviceId, onSelect }: ICameraP
                 {lensLabel && lensBadgeClass && (
                   <span className={`rounded-full px-2 py-0.5 ${lensBadgeClass}`}>{lensLabel}</span>
                 )}
-                {camera.zoom && (
+                {zoom && (
                   <span className="rounded-full bg-white/10 px-2 py-0.5 text-slate-300">
-                    {formatZoom(camera.zoom)}
+                    {formatZoom(zoom)}
                   </span>
                 )}
                 {camera.hasAutofocus && (
@@ -86,6 +91,14 @@ const CameraPicker = ({ cameras, loading, selectedDeviceId, onSelect }: ICameraP
                 )}
               </span>
             </button>
+            <details className="group border-t border-white/10 px-4">
+              <summary className="cursor-pointer list-none py-2 text-xs text-slate-400 transition-colors hover:text-slate-200">
+                ดูสเปก
+              </summary>
+              <div className="pb-3">
+                <CameraSpec camera={camera} />
+              </div>
+            </details>
           </li>
         );
       })}

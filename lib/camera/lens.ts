@@ -1,4 +1,5 @@
-import type { IZoomRange, LensKind } from './types';
+import type { IZoomRange } from './capabilities';
+import type { LensKind } from './types';
 
 export const MAIN_WIDE_MIN_ZOOM = 1;
 
