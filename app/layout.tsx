@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Prompt } from 'next/font/google';
+import DisableZoom from '@/components/DisableZoom';
 import './globals.css';
 
 const prompt = Prompt({
@@ -27,7 +28,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="th" className={prompt.variable}>
-      <body>{children}</body>
+      <body>
+        <DisableZoom />
+        {children}
+      </body>
     </html>
   );
 }
