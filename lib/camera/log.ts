@@ -33,5 +33,15 @@ export const describeCamera = (camera: ICameraCandidate): string => {
   return `#${camera.index} ${camera.label || 'ไม่ระบุชื่อ'} | ${camera.lensKind} | ${megapixels} | AF:${camera.hasAutofocus} | id=${camera.deviceId}`;
 };
 
-export const describeCameraList = (list: ICameraCandidate[]): string =>
-  list.length === 0 ? '(ไม่มีกล้อง)' : list.map(describeCamera).join('\n');
+export const listDevices = (): Promise<MediaDeviceInfo[]> =>
+  navigator.mediaDevices.enumerateDevices();
+
+const toPlainDevice = (device: MediaDeviceInfo): Record<string, string> => ({
+  deviceId: device.deviceId,
+  kind: device.kind,
+  label: device.label,
+  groupId: device.groupId,
+});
+
+export const describeDevices = (devices: MediaDeviceInfo[]): string =>
+  JSON.stringify(devices.map(toPlainDevice), null, 2);

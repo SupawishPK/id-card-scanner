@@ -6,7 +6,8 @@ import classifyCameraError from '@/lib/camera/classifyCameraError';
 import enumerateRearCameras from '@/lib/camera/enumerateRearCameras';
 import {
   describeCamera,
-  describeCameraList,
+  describeDevices,
+  listDevices,
   MAX_LOG_ENTRIES,
   type CameraLogLevel,
   type ICameraLogEntry,
@@ -152,10 +153,11 @@ const useCamera = () => {
     try {
       const list = await enumerateRearCameras();
       setCameras(list);
+      const devices = await listDevices();
+      pushLog('success', `enumerateDevices() → ${devices.length} รายการ`, describeDevices(devices));
       if (list.length > 0) {
         setSelectedIndex((current) => (current < list.length ? current : 0));
         setSelectedDeviceId((current) => current ?? list[0].deviceId);
-        pushLog('success', `พบกล้องหลัง ${list.length} ตัว`, describeCameraList(list));
       } else {
         pushLog('warn', 'ไม่พบกล้องหลังบนอุปกรณ์นี้');
       }
@@ -187,7 +189,8 @@ const useCamera = () => {
 
       const list = await enumerateRearCameras();
       setCameras(list);
-      pushLog('success', `พบกล้องหลัง ${list.length} ตัว`, describeCameraList(list));
+      const devices = await listDevices();
+      pushLog('success', `enumerateDevices() → ${devices.length} รายการ`, describeDevices(devices));
 
       const candidate = resolveDevice(list);
       if (!candidate) throw new DOMException('no rear camera found', 'NotFoundError');
