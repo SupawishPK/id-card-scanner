@@ -2,10 +2,17 @@
 
 import { useEffect } from 'react';
 
+interface IZoomTouchEvent extends TouchEvent {
+  scale?: number;
+}
+
 const DisableZoom = () => {
   useEffect(() => {
-    const preventMultiTouch = (event: TouchEvent): void => {
-      if (event.touches.length > 1) event.preventDefault();
+    const preventPinch = (event: TouchEvent): void => {
+      const scale = (event as IZoomTouchEvent).scale;
+      if (event.touches.length > 1 || (scale !== undefined && scale !== 1)) {
+        event.preventDefault();
+      }
     };
 
     const preventGesture = (event: Event): void => {
@@ -19,16 +26,16 @@ const DisableZoom = () => {
       lastTouchEnd = now;
     };
 
-    document.addEventListener('touchstart', preventMultiTouch, { passive: false });
-    document.addEventListener('touchmove', preventMultiTouch, { passive: false });
+    document.addEventListener('touchstart', preventPinch, { passive: false });
+    document.addEventListener('touchmove', preventPinch, { passive: false });
     document.addEventListener('touchend', preventDoubleTap, { passive: false });
     document.addEventListener('gesturestart', preventGesture);
     document.addEventListener('gesturechange', preventGesture);
     document.addEventListener('gestureend', preventGesture);
 
     return () => {
-      document.removeEventListener('touchstart', preventMultiTouch);
-      document.removeEventListener('touchmove', preventMultiTouch);
+      document.removeEventListener('touchstart', preventPinch);
+      document.removeEventListener('touchmove', preventPinch);
       document.removeEventListener('touchend', preventDoubleTap);
       document.removeEventListener('gesturestart', preventGesture);
       document.removeEventListener('gesturechange', preventGesture);
