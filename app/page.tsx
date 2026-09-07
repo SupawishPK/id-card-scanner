@@ -6,6 +6,7 @@ import Magnet from '@/components/reactbits/Magnet';
 import SplitText from '@/components/reactbits/SplitText';
 import StarBorder from '@/components/reactbits/StarBorder';
 import CameraBackdrop from '@/components/ui/CameraBackdrop';
+import CameraLog from '@/components/ui/CameraLog';
 import CameraPicker from '@/components/ui/CameraPicker';
 import CameraSwitchSheet from '@/components/ui/CameraSwitchSheet';
 import ErrorOverlay from '@/components/ui/ErrorOverlay';
@@ -23,6 +24,7 @@ const Home = () => {
     cameras,
     camerasLoading,
     error,
+    logs,
     mode,
     resolution,
     screen,
@@ -36,9 +38,11 @@ const Home = () => {
     setSelectedDeviceId,
     setSelectedIndex,
     switchCamera,
+    clearLogs,
   } = useCamera();
 
   const [showPicker, setShowPicker] = useState(false);
+  const [showLog, setShowLog] = useState(false);
 
   const handleSwitch = useCallback(
     (camera: ICameraCandidate) => {
@@ -161,6 +165,19 @@ const Home = () => {
           )}
         </>
       )}
+
+      <button
+        type="button"
+        onClick={() => setShowLog((current) => !current)}
+        className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-4 py-2 text-sm text-white backdrop-blur"
+      >
+        ดู Log
+        {logs.length > 0 && (
+          <span className="rounded-full bg-accent px-1.5 text-xs font-medium">{logs.length}</span>
+        )}
+      </button>
+
+      {showLog && <CameraLog logs={logs} onClose={() => setShowLog(false)} onClear={clearLogs} />}
     </main>
   );
 };

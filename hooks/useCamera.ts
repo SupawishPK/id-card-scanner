@@ -4,6 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import classifyCameraError from '@/lib/camera/classifyCameraError';
 import enumerateRearCameras from '@/lib/camera/enumerateRearCameras';
+import {
+  describeCamera,
+  describeCameraList,
+  MAX_LOG_ENTRIES,
+  type CameraLogLevel,
+  type ICameraLogEntry,
+} from '@/lib/camera/log';
 import requestCameraStream from '@/lib/camera/requestCameraStream';
 import type { ResolutionPreset } from '@/lib/camera/resolution';
 import selectBestRearCamera from '@/lib/camera/selectBestRearCamera';
@@ -42,6 +49,31 @@ const useCamera = () => {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
   const [error, setError] = useState<ICameraError | null>(null);
+  const [logs, setLogs] = useState<ICameraLogEntry[]>([]);
+  const logIdRef = useRef(0);
+
+  const pushLog = useCallback(
+    (level: CameraLogLevel, message: string, detail?: string): void => {
+      logIdRef.current += 1;
+      const entry: ICameraLogEntry = {
+        id: logIdRef.current,
+        timestamp: Date.now(),
+        level,
+        message,
+        detail,
+      };
+      setLogs((prev) => {
+        const next = [...prev, entry];
+        return next.length > MAX_LOG_ENTRIES ? next.slice(next.length - MAX_LOG_ENTRIES) : next;
+      });
+    },
+    [],
+  );
+
+  const clearLogs = useCallback((): void => {
+    logIdRef.current = 0;
+    setLogs([]);
+  }, []);
 
   const stopCamera = useCallback(() => {
     requestIdRef.current += 1;
@@ -69,6 +101,12 @@ const useCamera = () => {
       stopCamera();
       const requestId = requestIdRef.current;
 
+      pushLog(
+        'info',
+        candidate ? `เปิดสตรีม: ${describeCamera(candidate)}` : 'เปิดสตรีม: กล้องหลังอัตโนมัติ',
+        `resolution=${resolution}`,
+      );
+
       const stream = await requestCameraStream(candidate?.deviceId, resolution);
       if (requestId !== requestIdRef.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -80,14 +118,21 @@ const useCamera = () => {
 
       setActiveCamera(candidate);
       setScreen('live');
+      pushLog('success', 'สตรีมเริ่มทำงานแล้ว (video.play สำเร็จ)');
     },
-    [attachStream, resolution, stopCamera],
+    [attachStream, pushLog, resolution, stopCamera],
   );
 
-  const handleError = useCallback(async (err: unknown): Promise<void> => {
-    const kind = await classifyCameraError(err);
-    setError({ kind, message: mapErrorMessage(kind) });
-  }, []);
+  const handleError = useCallback(
+    async (err: unknown): Promise<void> => {
+      const kind = await classifyCameraError(err);
+      const message = mapErrorMessage(kind);
+      setError({ kind, message });
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      pushLog('error', `เกิดข้อผิดพลาด (${kind}): ${message}`, detail);
+    },
+    [pushLog],
+  );
 
   const resolveDevice = useCallback(
     (list: ICameraCandidate[]): ICameraCandidate | null => {
@@ -102,6 +147,7 @@ const useCamera = () => {
   const prepareCameras = useCallback(async () => {
     setCamerasLoading(true);
     setError(null);
+    pushLog('info', 'กำลังค้นหากล้องหลัง…');
 
     try {
       const list = await enumerateRearCameras();
@@ -109,13 +155,16 @@ const useCamera = () => {
       if (list.length > 0) {
         setSelectedIndex((current) => (current < list.length ? current : 0));
         setSelectedDeviceId((current) => current ?? list[0].deviceId);
+        pushLog('success', `พบกล้องหลัง ${list.length} ตัว`, describeCameraList(list));
+      } else {
+        pushLog('warn', 'ไม่พบกล้องหลังบนอุปกรณ์นี้');
       }
     } catch (err) {
       await handleError(err);
     } finally {
       setCamerasLoading(false);
     }
-  }, [handleError]);
+  }, [handleError, pushLog]);
 
   const selectMode = useCallback(
     (next: CameraMode): void => {
@@ -128,6 +177,7 @@ const useCamera = () => {
   const openCamera = useCallback(async () => {
     setScreen('loading');
     setError(null);
+    pushLog('info', `เปิดกล้อง: mode=${mode}`);
 
     try {
       if (mode === 'auto') {
@@ -137,6 +187,7 @@ const useCamera = () => {
 
       const list = await enumerateRearCameras();
       setCameras(list);
+      pushLog('success', `พบกล้องหลัง ${list.length} ตัว`, describeCameraList(list));
 
       const candidate = resolveDevice(list);
       if (!candidate) throw new DOMException('no rear camera found', 'NotFoundError');
@@ -146,12 +197,16 @@ const useCamera = () => {
       await handleError(err);
       setScreen('error');
     }
-  }, [handleError, mode, resolveDevice, startStream]);
+  }, [handleError, mode, pushLog, resolveDevice, startStream]);
 
   const switchCamera = useCallback(
     async (candidate: ICameraCandidate | null): Promise<void> => {
       setScreen('loading');
       setError(null);
+      pushLog(
+        'info',
+        candidate ? `สลับกล้อง: ${describeCamera(candidate)}` : 'สลับกล้อง: อัตโนมัติ',
+      );
 
       try {
         await startStream(candidate);
@@ -160,7 +215,7 @@ const useCamera = () => {
         setScreen('error');
       }
     },
-    [handleError, startStream],
+    [handleError, pushLog, startStream],
   );
 
   useEffect(() => {
@@ -187,6 +242,8 @@ const useCamera = () => {
     setSelectedDeviceId,
     setSelectedIndex,
     switchCamera,
+    logs,
+    clearLogs,
   };
 };
 
