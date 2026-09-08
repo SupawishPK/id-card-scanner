@@ -6,6 +6,13 @@
 const requestFlip6RearCameraConstraints = async (
   onLog: (message: string, detail?: unknown) => void = (...args) => console.log(...args),
 ): Promise<MediaStreamConstraints | null> => {
+  try {
+    const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+    onLog('navigator.permissions.query(camera)', { state: status.state });
+  } catch (err) {
+    onLog('navigator.permissions.query(camera) ไม่รองรับ / error', err);
+  }
+
   onLog('ขอ permission กล้อง (เปิด throwaway stream)…');
   let warmup: MediaStream;
   try {
