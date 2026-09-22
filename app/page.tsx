@@ -22,14 +22,15 @@ const Home = () => {
   const {
     activeCamera,
     cameras,
-    canvasRef,
     debug,
     error,
+    freezeCanvasRef,
     notice,
     open,
     retry,
     screen,
     selectCamera,
+    showFreeze,
     switching,
     videoRef,
   } = useCamera();
@@ -146,13 +147,13 @@ const Home = () => {
         autoPlay
         muted
         playsInline
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 block h-full w-full object-cover opacity-0"
+        aria-label="ภาพจากกล้องหลัง"
+        className="absolute inset-0 block h-full w-full bg-black object-cover object-center"
       />
       <canvas
-        ref={canvasRef}
-        aria-label="ภาพจากกล้องหลัง"
-        className="absolute inset-0 block h-full w-full bg-black"
+        ref={freezeCanvasRef}
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 block h-full w-full transition-opacity duration-150 ${showFreeze ? 'opacity-100' : 'opacity-0'}`}
       />
       <div className="pointer-events-none absolute inset-[15%_10%_35%] z-[2] opacity-[0.42]" aria-hidden="true">
         <i className="absolute left-0 top-0 size-[22px] border-l border-t border-white" />
