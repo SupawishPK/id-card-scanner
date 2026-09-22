@@ -44,6 +44,7 @@ const useCamera = () => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [freezeFrame, setFreezeFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
 
   const videoFor = useCallback(
@@ -90,6 +91,25 @@ const useCamera = () => {
       cap,
       scale: scale ? scale.toFixed(3) : '-',
     });
+  }, [videoFor]);
+
+  /**
+   * Capture the currently visible video frame so it can cover the loading
+   * window (old stream stopped, new stream not ready). Without it, some
+   * devices shrink/black out the visible video the moment its track stops.
+   */
+  const captureFrame = useCallback((): string | null => {
+    const video = videoFor(slotRef.current);
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+      return null;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
   }, [videoFor]);
 
   /**
@@ -181,6 +201,7 @@ const useCamera = () => {
         streamRef.current = stream;
         slotRef.current = toSlot;
         setActiveSlot(toSlot);
+        setFreezeFrame(null);
         commitActive(camera);
         setScreen('live');
         fitVideo();
@@ -206,12 +227,16 @@ const useCamera = () => {
 
       setError(null);
       setSwitching(isSwitch);
-      if (!isSwitch) setScreen('loading');
+      if (!isSwitch) {
+        setScreen('loading');
+        setFreezeFrame(null);
+      }
 
       if (isSwitch) {
-        // Freeze the visible frame: stop the current stream, load the next one
-        // into the hidden buffer, then crossfade. The visible video element's
-        // srcObject is never reassigned, so the preview stays full-screen.
+        // Capture the current frame first so it can cover the loading window,
+        // then release the active lens. The visible video element's srcObject is
+        // never reassigned, so the preview stays full-screen throughout.
+        setFreezeFrame(captureFrame());
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
@@ -232,6 +257,7 @@ const useCamera = () => {
         streamRef.current = stream;
         slotRef.current = toSlot;
         setActiveSlot(toSlot);
+        setFreezeFrame(null);
         commitActive(camera);
         setScreen('live');
         fitVideo();
@@ -244,11 +270,12 @@ const useCamera = () => {
         const kind = await classifyCameraError(cause);
         setError(messages[kind]);
         setScreen(isSwitch ? 'live' : 'error');
+        setFreezeFrame(null);
       } finally {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attachTo, commitActive, fitVideo, restore],
+    [attachTo, captureFrame, commitActive, fitVideo, restore],
   );
 
   const open = useCallback(async () => {
@@ -305,6 +332,7 @@ const useCamera = () => {
     cameras,
     debug,
     error,
+    freezeFrame,
     notice,
     open,
     retry,
