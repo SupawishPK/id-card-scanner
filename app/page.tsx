@@ -13,8 +13,18 @@ const cameraTitle = (camera: ICameraCandidate, index: number) => {
 };
 
 const Home = () => {
-  const { activeCamera, cameras, error, open, retry, screen, selectCamera, switching, videoRef } =
-    useCamera();
+  const {
+    activeCamera,
+    cameras,
+    error,
+    open,
+    retry,
+    screen,
+    selectCamera,
+    switching,
+    transitionFrame,
+    videoRef,
+  } = useCamera();
   const [showPicker, setShowPicker] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -94,6 +104,7 @@ const Home = () => {
   return (
     <main className="camera-app camera-app--live" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       <video ref={videoRef} autoPlay muted playsInline aria-label="ภาพจากกล้องหลัง" className={`camera-video ${switching ? 'is-switching' : ''}`} />
+      {transitionFrame && <div className="transition-frame" style={{ backgroundImage: `url(${transitionFrame})` }} aria-hidden="true" />}
       <div className="viewfinder" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="live-topbar">
         <div><span className="status-dot" /> LIVE</div>

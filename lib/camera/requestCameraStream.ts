@@ -17,6 +17,7 @@ const requestCameraStream = async (deviceId?: string): Promise<MediaStream> => {
   const video: MediaTrackConstraints = {
     width: { ideal: 1920 },
     height: { ideal: 1080 },
+    aspectRatio: { ideal: 16 / 9 },
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
   };
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
