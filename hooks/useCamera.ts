@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import classifyCameraError from '@/lib/camera/classifyCameraError';
 import enumerateRearCameras from '@/lib/camera/enumerateRearCameras';
 import requestCameraStream from '@/lib/camera/requestCameraStream';
-import selectDefaultCamera from '@/lib/camera/selectDefaultCamera';
 import type { ICameraCapabilities } from '@/lib/camera/capabilities';
 import type { ICameraCandidate, ICameraError } from '@/lib/camera/types';
 
@@ -325,7 +324,8 @@ const useCamera = () => {
     setError(null);
     try {
       const list = await discover();
-      await start(selectDefaultCamera(list));
+      // Always start on the first camera so the UI opens on "กล้อง 1".
+      await start(list[0] ?? null);
     } catch (cause) {
       const kind = await classifyCameraError(cause);
       setError(messages[kind]);
