@@ -32,6 +32,7 @@ const Home = () => {
     notice,
     open,
     retry,
+    revealing,
     screen,
     selectCamera,
     switching,
@@ -152,11 +153,11 @@ const Home = () => {
         muted
         playsInline
         aria-label="ภาพจากกล้องหลัง"
-        className="absolute left-1/2 top-1/2 block h-full w-full -translate-x-1/2 -translate-y-1/2 object-cover object-center"
+        className="absolute inset-0 block h-full w-full min-h-full min-w-full object-cover object-center"
       />
       {transitionFrame && (
         <div
-          className="absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat"
+          className={`absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat transition-opacity duration-200 ${revealing ? 'opacity-0' : ''}`}
           style={{ backgroundImage: `url(${transitionFrame})` }}
           aria-hidden="true"
         />
