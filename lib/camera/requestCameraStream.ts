@@ -14,12 +14,15 @@ export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
 };
 
 const requestCameraStream = async (deviceId?: string): Promise<MediaStream> => {
-  // Keep constraints minimal: requesting a fixed resolution/aspect ratio makes
-  // some rear lenses letterbox or fall back to a low-resolution stream. We let
-  // the browser pick the native size and let the preview fit the viewport.
-  const video: MediaTrackConstraints = deviceId
-    ? { deviceId: { exact: deviceId } }
-    : { facingMode: { ideal: 'environment' } };
+  // Ask for 1080p so the preview stays sharp. `ideal` (not `exact`) lets a
+  // lens that cannot reach 1080p fall back gracefully, and we avoid an
+  // aspect-ratio constraint so 4:3 sensors are not letterboxed — the preview
+  // is fitted to the viewport separately.
+  const video: MediaTrackConstraints = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
+  };
 
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
   await applyAutofocus(stream);
