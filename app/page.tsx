@@ -18,6 +18,7 @@ const Home = () => {
     cameras,
     debug,
     error,
+    notice,
     open,
     retry,
     screen,
@@ -114,9 +115,12 @@ const Home = () => {
         </button>
       </div>
       {switching && <div className="switching-label">กำลังเปลี่ยนเลนส์...</div>}
+      {notice && <div className="camera-notice">{notice}</div>}
       {debug && (
         <div className="camera-debug" aria-hidden="true">
-          {`container ${debug.container}\nelement   ${debug.element}\nintrinsic ${debug.intrinsic}\ntrack     ${debug.track}\nscale     ${debug.scale}`}
+          {`container ${debug.container}\nelement   ${debug.element}\nintrinsic ${debug.intrinsic}\ntrack     ${debug.track}\nscale     ${debug.scale}\ncameras   ${cameras.length}\n${cameras
+            .map((camera, index) => `${index}: ${camera.label || 'ไม่ระบุชื่อ'}${camera.deviceId === activeCamera?.deviceId ? ' *' : ''}`)
+            .join('\n')}`}
         </div>
       )}
       <section className="camera-dock" aria-label="เลือกกล้องหลัง">

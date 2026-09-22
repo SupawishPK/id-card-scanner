@@ -46,6 +46,7 @@ h1 em { color: var(--orange); font-style: normal; }
 .round-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #ffffff40; border-radius: 50%; background: #0006; color: white; cursor: pointer; backdrop-filter: blur(10px); }
 .camera-glyph { font-size: 21px; }
 .switching-label { position: absolute; z-index: 3; top: 50%; left: 50%; padding: 9px 14px; border-radius: 999px; background: #111c; color: #fff; font-size: 12px; transform: translate(-50%, -50%); backdrop-filter: blur(12px); }
+.camera-notice { position: absolute; z-index: 3; top: calc(50% + 52px); left: 50%; padding: 9px 16px; border-radius: 999px; background: #ff6b35e6; color: #fff; font-size: 12px; font-weight: 500; transform: translate(-50%, -50%); box-shadow: 0 10px 30px #0007; }
 .camera-dock { position: relative; z-index: 2; padding: 18px 18px max(22px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #0b0c0def 18%, #0b0c0d 100%); }
 .lens-selector { overflow: hidden; width: 100%; mask-image: linear-gradient(90deg, transparent, black 16%, black 84%, transparent); }
 .lens-track { display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: center; width: 100%; min-height: 54px; transition: transform .18s cubic-bezier(.22, 1, .36, 1); }

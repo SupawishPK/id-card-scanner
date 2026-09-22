@@ -14,6 +14,8 @@ const messages: Record<ICameraError['kind'], string> = {
   generic: 'เปิดกล้องไม่สำเร็จ ลองใหม่อีกครั้ง',
 };
 
+const SWITCH_FAILED = 'เปลี่ยนกล้องไม่สำเร็จ ลองอีกครั้ง';
+
 export interface ICameraDebug {
   container: string;
   element: string;
@@ -26,13 +28,22 @@ const useCamera = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef(0);
+  const activeCameraRef = useRef<ICameraCandidate | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
   const [screen, setScreen] = useState<'intro' | 'loading' | 'live' | 'error'>('intro');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [transitionFrame, setTransitionFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
+
+  const showNotice = useCallback((text: string) => {
+    setNotice(text);
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2600);
+  }, []);
 
   const stopStream = useCallback(() => {
     requestRef.current += 1;
@@ -128,13 +139,57 @@ const useCamera = () => {
     return list;
   }, []);
 
+  const commitActive = useCallback((camera: ICameraCandidate | null) => {
+    activeCameraRef.current = camera;
+    setActiveCamera(camera);
+  }, []);
+
+  /**
+   * Re-open the lens that was active before a failed switch so the preview is
+   * never left on a dead stream.
+   */
+  const restore = useCallback(
+    async (camera: ICameraCandidate, currentRequest: number) => {
+      try {
+        const stream = await requestCameraStream(camera.deviceId);
+        if (currentRequest !== requestRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        await attach(stream);
+        if (currentRequest !== requestRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        commitActive(camera);
+        setScreen('live');
+        setTransitionFrame(null);
+      } catch {
+        setTransitionFrame(null);
+      } finally {
+        showNotice(SWITCH_FAILED);
+      }
+    },
+    [attach, commitActive, showNotice],
+  );
+
   const start = useCallback(
     async (camera: ICameraCandidate | null, isSwitch = false) => {
       const currentRequest = ++requestRef.current;
+      const previousCamera = activeCameraRef.current;
       setError(null);
       setSwitching(isSwitch);
       if (!isSwitch) setScreen('loading');
-      if (isSwitch) setTransitionFrame(captureFrame());
+
+      if (isSwitch) {
+        setTransitionFrame(captureFrame());
+        // Release the active lens before opening another one. Multi-camera
+        // phones such as the Galaxy Z Flip 6 cannot stream two rear lenses at
+        // the same time, so opening the next one while this still runs throws.
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
 
       try {
         const stream = await requestCameraStream(camera?.deviceId);
@@ -149,14 +204,16 @@ const useCamera = () => {
           return;
         }
 
-        const previous = streamRef.current;
         streamRef.current = stream;
-        previous?.getTracks().forEach((track) => track.stop());
-        setActiveCamera(camera);
+        commitActive(camera);
         setScreen('live');
         setTransitionFrame(null);
       } catch (cause) {
         if (currentRequest !== requestRef.current) return;
+        if (isSwitch && previousCamera) {
+          await restore(previousCamera, currentRequest);
+          return;
+        }
         const kind = await classifyCameraError(cause);
         setError(messages[kind]);
         setScreen(isSwitch ? 'live' : 'error');
@@ -165,7 +222,7 @@ const useCamera = () => {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attach, captureFrame],
+    [attach, captureFrame, commitActive, restore],
   );
 
   const open = useCallback(async () => {
@@ -182,10 +239,10 @@ const useCamera = () => {
 
   const selectCamera = useCallback(
     async (camera: ICameraCandidate) => {
-      if (camera.deviceId === activeCamera?.deviceId || switching) return;
+      if (camera.deviceId === activeCameraRef.current?.deviceId || switching) return;
       await start(camera, true);
     },
-    [activeCamera?.deviceId, start, switching],
+    [start, switching],
   );
 
   const retry = useCallback(() => {
@@ -206,7 +263,10 @@ const useCamera = () => {
   }, [fitVideo]);
 
   useEffect(() => {
-    return () => stopStream();
+    return () => {
+      stopStream();
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    };
   }, [stopStream]);
 
   return {
@@ -214,6 +274,7 @@ const useCamera = () => {
     cameras,
     debug,
     error,
+    notice,
     open,
     retry,
     screen,
