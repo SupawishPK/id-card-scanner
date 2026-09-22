@@ -1,183 +1,98 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import Magnet from '@/components/reactbits/Magnet';
-import SplitText from '@/components/reactbits/SplitText';
-import StarBorder from '@/components/reactbits/StarBorder';
-import CameraBackdrop from '@/components/ui/CameraBackdrop';
-import CameraLog from '@/components/ui/CameraLog';
-import CameraPicker from '@/components/ui/CameraPicker';
-import CameraSwitchSheet from '@/components/ui/CameraSwitchSheet';
-import ErrorOverlay from '@/components/ui/ErrorOverlay';
-import IndexPicker from '@/components/ui/IndexPicker';
-import LiveControls from '@/components/ui/LiveControls';
-import LoadingOverlay from '@/components/ui/LoadingOverlay';
-import ModeSelector from '@/components/ui/ModeSelector';
-import ResolutionSelector from '@/components/ui/ResolutionSelector';
 import useCamera from '@/hooks/useCamera';
 import type { ICameraCandidate } from '@/lib/camera/types';
 
+const cameraTitle = (camera: ICameraCandidate, index: number) => {
+  const label = camera.label.toLowerCase();
+  if (label.includes('ultra') || label.includes('wide')) return 'มุมกว้าง';
+  if (label.includes('tele') || label.includes('zoom')) return 'ซูม';
+  return index === 0 ? 'กล้องหลัก' : `กล้องหลัง ${index + 1}`;
+};
+
 const Home = () => {
-  const {
-    activeCamera,
-    cameras,
-    camerasLoading,
-    error,
-    logs,
-    mode,
-    resolution,
-    screen,
-    selectedDeviceId,
-    selectedIndex,
-    videoRef,
-    openCamera,
-    prepareCameras,
-    selectMode,
-    setResolution,
-    setSelectedDeviceId,
-    setSelectedIndex,
-    switchCamera,
-    clearLogs,
-  } = useCamera();
-
+  const { activeCamera, cameras, error, open, retry, screen, selectCamera, switching, videoRef } =
+    useCamera();
   const [showPicker, setShowPicker] = useState(false);
-  const [showLog, setShowLog] = useState(false);
+  const touchStart = useRef<number | null>(null);
 
-  const handleSwitch = useCallback(
-    (camera: ICameraCandidate) => {
-      setShowPicker(false);
-      void switchCamera(camera);
-    },
-    [switchCamera],
-  );
+  useEffect(() => {
+    if (!showPicker) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowPicker(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showPicker]);
 
-  const handleSwitchAuto = useCallback(() => {
-    setShowPicker(false);
-    void switchCamera(null);
-  }, [switchCamera]);
+  const onTouchStart = (event: React.TouchEvent) => {
+    touchStart.current = event.touches[0]?.clientX ?? null;
+  };
 
-  const handleOpenSwitch = useCallback(() => {
-    setShowPicker(true);
-    if (cameras.length === 0) void prepareCameras();
-  }, [cameras.length, prepareCameras]);
+  const onTouchEnd = (event: React.TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (start === null || cameras.length < 2 || switching) return;
+    const delta = (event.changedTouches[0]?.clientX ?? start) - start;
+    if (Math.abs(delta) < 55) return;
+    const current = cameras.findIndex((camera) => camera.deviceId === activeCamera?.deviceId);
+    const nextIndex = (current + (delta < 0 ? 1 : -1) + cameras.length) % cameras.length;
+    void selectCamera(cameras[nextIndex]);
+  };
+
+  if (screen === 'intro' || screen === 'error') {
+    return (
+      <main className="camera-app camera-app--intro">
+        <div className="intro-glow" />
+        <div className="intro-content">
+          <div className="brand-mark" aria-hidden="true"><span /></div>
+          <p className="eyebrow">MOBILE CAMERA</p>
+          <h1>เลือกภาพที่<br /><em>ชัดที่สุด</em></h1>
+          <p className="intro-copy">สลับเลนส์กล้องหลังได้ทันที<br />เพื่อให้ได้ภาพที่เหมาะกับทุกระยะ</p>
+          {error && <p className="error-message">{error}</p>}
+          <button type="button" className="primary-button" onClick={() => void (screen === 'error' ? retry() : open())}>
+            {screen === 'error' ? 'ลองเปิดกล้องอีกครั้ง' : 'เปิดกล้อง'}
+            <span aria-hidden="true">→</span>
+          </button>
+          <p className="privacy-note"><span aria-hidden="true">●</span> ภาพอยู่ในอุปกรณ์ของคุณ</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="relative min-h-dvh w-full overflow-hidden bg-slate-950 text-white">
-      <video
-        ref={videoRef}
-        aria-label="video feed from camera"
-        autoPlay
-        muted
-        playsInline
-        disablePictureInPicture
-        className={
-          screen === 'live'
-            ? 'absolute inset-0 size-full object-cover'
-            : 'invisible absolute inset-0 size-full object-cover'
-        }
-      />
-
-      {screen === 'intro' && (
-        <>
-          <CameraBackdrop />
-          <div className="relative z-10 flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
-            <SplitText
-              text="เปิดกล้อง"
-              tag="h1"
-              splitType="chars"
-              className="text-4xl font-semibold tracking-tight sm:text-5xl"
-            />
-
-            <ModeSelector mode={mode} onChange={selectMode} />
-
-            <ResolutionSelector value={resolution} onChange={setResolution} />
-
-            {mode === 'index' && (
-              <IndexPicker
-                cameras={cameras}
-                loading={camerasLoading}
-                selectedIndex={selectedIndex}
-                onSelect={setSelectedIndex}
-              />
-            )}
-
-            {mode === 'manual' && (
-              <div className="w-full max-w-sm">
-                <p className="mb-3 text-center text-sm text-slate-400">เลือกกล้องหลังด้วยตัวเอง</p>
-                <CameraPicker
-                  cameras={cameras}
-                  loading={camerasLoading}
-                  selectedDeviceId={selectedDeviceId}
-                  onSelect={(camera) => setSelectedDeviceId(camera.deviceId)}
-                />
-              </div>
-            )}
-
-            {error && <p className="max-w-sm text-sm text-red-400">{error.message}</p>}
-
-            <Magnet padding={80} magnetStrength={2}>
-              <StarBorder
-                onClick={() => void openCamera()}
-                color="var(--color-accent)"
-                backgroundColor="rgba(2, 6, 23, 0.6)"
-                textColor="#ffffff"
-                borderColor="var(--color-accent)"
-              >
-                เปิดกล้อง
-              </StarBorder>
-            </Magnet>
-          </div>
-        </>
-      )}
-
-      {screen === 'loading' && (
-        <div className="absolute inset-0 z-20">
-          <LoadingOverlay />
+    <main className="camera-app camera-app--live" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <video ref={videoRef} autoPlay muted playsInline aria-label="ภาพจากกล้องหลัง" className={`camera-video ${switching ? 'is-switching' : ''}`} />
+      <div className="viewfinder" aria-hidden="true"><i /><i /><i /><i /></div>
+      <div className="live-topbar">
+        <div><span className="status-dot" /> LIVE</div>
+        <button type="button" className="round-button" onClick={() => setShowPicker(true)} aria-label="เลือกกล้อง">
+          <span className="camera-glyph">◉</span>
+        </button>
+      </div>
+      {switching && <div className="switching-label">กำลังเปลี่ยนเลนส์...</div>}
+      <section className="camera-dock" aria-label="เลือกกล้องหลัง">
+        <div className="dock-heading"><span>กล้องหลัง</span><span>{cameras.length} เลนส์</span></div>
+        <div className="lens-list">
+          {cameras.map((camera, index) => {
+            const selected = camera.deviceId === activeCamera?.deviceId;
+            return <button key={camera.deviceId} type="button" className={`lens-pill ${selected ? 'is-selected' : ''}`} onClick={() => void selectCamera(camera)} disabled={switching}>
+              <span className="lens-index">{String(index + 1).padStart(2, '0')}</span>
+              <span>{cameraTitle(camera, index)}</span>
+              {selected && <span className="check">✓</span>}
+            </button>;
+          })}
         </div>
-      )}
-
-      {screen === 'error' && (
-        <div className="absolute inset-0 z-20">
-          <CameraBackdrop />
-          <div className="relative grid min-h-dvh place-items-center p-6">
-            <ErrorOverlay message={error?.message} onRetry={() => void openCamera()} />
-          </div>
+        <p className="gesture-hint">ปัดซ้ายหรือขวาเพื่อเปลี่ยนกล้อง</p>
+      </section>
+      {showPicker && <div className="picker-sheet" role="dialog" aria-modal="true" aria-label="เลือกกล้องหลัง">
+        <div className="sheet-backdrop" onClick={() => setShowPicker(false)} />
+        <div className="sheet-content"><div className="sheet-handle" /><div className="sheet-header"><h2>เลือกกล้องหลัง</h2><button type="button" onClick={() => setShowPicker(false)}>ปิด</button></div>
+          {cameras.map((camera, index) => <button key={camera.deviceId} type="button" className={`sheet-option ${camera.deviceId === activeCamera?.deviceId ? 'is-selected' : ''}`} onClick={() => { void selectCamera(camera); setShowPicker(false); }}><span className="sheet-number">{index + 1}</span><span><strong>{cameraTitle(camera, index)}</strong><small>{camera.hasAutofocus ? 'โฟกัสอัตโนมัติ' : 'โฟกัสมาตรฐาน'}</small></span><span>{camera.deviceId === activeCamera?.deviceId ? '✓' : '›'}</span></button>)}
         </div>
-      )}
-
-      {screen === 'live' && (
-        <>
-          <LiveControls
-            label={activeCamera?.label || 'กล้องอัตโนมัติ'}
-            onSwitch={handleOpenSwitch}
-          />
-          {showPicker && (
-            <CameraSwitchSheet
-              cameras={cameras}
-              loading={camerasLoading}
-              selectedDeviceId={activeCamera?.deviceId}
-              isAuto={!activeCamera}
-              onSelect={handleSwitch}
-              onSelectAuto={handleSwitchAuto}
-              onClose={() => setShowPicker(false)}
-            />
-          )}
-        </>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setShowLog((current) => !current)}
-        className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-4 py-2 text-sm text-white backdrop-blur"
-      >
-        ดู Log
-        {logs.length > 0 && (
-          <span className="rounded-full bg-accent px-1.5 text-xs font-medium">{logs.length}</span>
-        )}
-      </button>
-
-      {showLog && <CameraLog logs={logs} onClose={() => setShowLog(false)} onClear={clearLogs} />}
+      </div>}
     </main>
   );
 };

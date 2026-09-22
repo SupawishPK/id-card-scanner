@@ -1,10 +1,4 @@
-/**
- * Open a camera stream for a specific device (or the default rear camera when
- * no deviceId is given) and apply continuous autofocus best-effort.
- */
-
 import { FOCUS_MODES, type ICameraCapabilities, type IFocusConstraint } from './capabilities';
-import { RESOLUTION_PRESETS, type ResolutionPreset } from './resolution';
 
 export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
   const track = stream.getVideoTracks()[0];
@@ -12,31 +6,19 @@ export const applyAutofocus = async (stream: MediaStream): Promise<void> => {
 
   try {
     const capabilities = track.getCapabilities() as ICameraCapabilities;
-    const modes = capabilities.focusMode;
-    if (!modes || modes.length === 0) return;
-
-    const mode = FOCUS_MODES.find((candidate) => modes.includes(candidate));
-    if (!mode) return;
-
-    const constraint: IFocusConstraint = { focusMode: mode };
-    await track.applyConstraints({ advanced: [constraint] });
+    const mode = FOCUS_MODES.find((candidate) => capabilities.focusMode?.includes(candidate));
+    if (mode) await track.applyConstraints({ advanced: [{ focusMode: mode } as IFocusConstraint] });
   } catch {
-    // Autofocus is a soft hint — ignore unsupported/denied focus requests.
+    // Focus controls are optional across mobile browsers.
   }
 };
 
-const requestCameraStream = async (
-  deviceId?: string,
-  preset: ResolutionPreset = '4k',
-): Promise<MediaStream> => {
-  const { width, height } = RESOLUTION_PRESETS[preset];
-
+const requestCameraStream = async (deviceId?: string): Promise<MediaStream> => {
   const video: MediaTrackConstraints = {
-    width: { ideal: 1920, max: width },
-    height: { ideal: 1080, max: height },
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }),
   };
-
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video });
   await applyAutofocus(stream);
   return stream;

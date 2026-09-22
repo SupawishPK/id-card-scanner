@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Prompt } from 'next/font/google';
-import DisableZoom from '@/components/DisableZoom';
 import './globals.css';
 
 const prompt = Prompt({
@@ -12,8 +11,8 @@ const prompt = Prompt({
 });
 
 export const metadata: Metadata = {
-  title: 'เปิดกล้อง',
-  description: 'เลือกและเปิดกล้องหลังของอุปกรณ์',
+  title: 'เลือกกล้องหลัง',
+  description: 'สลับเลนส์กล้องหลังเพื่อเลือกภาพที่ชัดที่สุด',
 };
 
 export const viewport: Viewport = {
@@ -22,14 +21,13 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#020617',
+  themeColor: '#0d0e10',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="th" className={prompt.variable}>
       <body>
-        <DisableZoom />
         {children}
       </body>
     </html>
