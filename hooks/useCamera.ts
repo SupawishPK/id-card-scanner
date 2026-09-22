@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import classifyCameraError from '@/lib/camera/classifyCameraError';
 import enumerateRearCameras from '@/lib/camera/enumerateRearCameras';
 import requestCameraStream from '@/lib/camera/requestCameraStream';
+import selectDefaultCamera from '@/lib/camera/selectDefaultCamera';
+import type { ICameraCapabilities } from '@/lib/camera/capabilities';
 import type { ICameraCandidate, ICameraError } from '@/lib/camera/types';
 
 const messages: Record<ICameraError['kind'], string> = {
@@ -21,6 +23,7 @@ export interface ICameraDebug {
   element: string;
   intrinsic: string;
   track: string;
+  cap: string;
   scale: string;
 }
 
@@ -30,12 +33,14 @@ const useCamera = () => {
   const requestRef = useRef(0);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  const revealTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
   const [screen, setScreen] = useState<'intro' | 'loading' | 'live' | 'error'>('intro');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [revealing, setRevealing] = useState(false);
   const [transitionFrame, setTransitionFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
 
@@ -43,6 +48,20 @@ const useCamera = () => {
     setNotice(text);
     if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
     noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2600);
+  }, []);
+
+  /**
+   * Fade the frozen frame out and play the lens zoom pulse as the new stream is
+   * revealed, mimicking the native Android lens switch.
+   */
+  const reveal = useCallback(() => {
+    if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
+    setRevealing(true);
+    revealTimerRef.current = window.setTimeout(() => {
+      setRevealing(false);
+      setTransitionFrame(null);
+      revealTimerRef.current = null;
+    }, 340);
   }, []);
 
   const stopStream = useCallback(() => {
@@ -69,6 +88,10 @@ const useCamera = () => {
 
     const track = streamRef.current?.getVideoTracks()[0];
     const settings = track?.getSettings();
+    const capabilities = track?.getCapabilities() as ICameraCapabilities | undefined;
+    const capWidth = capabilities?.width?.max ?? 0;
+    const capHeight = capabilities?.height?.max ?? 0;
+    const cap = capWidth && capHeight ? `${capWidth}×${capHeight}` : '-';
 
     if (!cw || !ch || !vw || !vh) {
       setDebug({
@@ -76,6 +99,7 @@ const useCamera = () => {
         element: `${Math.round(video.clientWidth)}×${Math.round(video.clientHeight)}`,
         intrinsic: `${vw}×${vh}`,
         track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
+        cap,
         scale: '-',
       });
       return;
@@ -90,6 +114,7 @@ const useCamera = () => {
       element: `${Math.round(vw * scale)}×${Math.round(vh * scale)}`,
       intrinsic: `${vw}×${vh}`,
       track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
+      cap,
       scale: scale.toFixed(3),
     });
   }, []);
@@ -151,7 +176,7 @@ const useCamera = () => {
   const restore = useCallback(
     async (camera: ICameraCandidate, currentRequest: number) => {
       try {
-        const stream = await requestCameraStream(camera.deviceId);
+        const stream = await requestCameraStream(camera);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -164,25 +189,34 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        setTransitionFrame(null);
+        reveal();
       } catch {
         setTransitionFrame(null);
       } finally {
         showNotice(SWITCH_FAILED);
       }
     },
-    [attach, commitActive, showNotice],
+    [attach, commitActive, reveal, showNotice],
   );
 
   const start = useCallback(
-    async (camera: ICameraCandidate | null, isSwitch = false) => {
+    async (
+      camera: ICameraCandidate | null,
+      isSwitch = false,
+      previousOverride?: ICameraCandidate | null,
+    ) => {
       const currentRequest = ++requestRef.current;
-      const previousCamera = activeCameraRef.current;
+      const previousCamera = previousOverride ?? activeCameraRef.current;
       setError(null);
       setSwitching(isSwitch);
       if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
+        if (revealTimerRef.current) {
+          window.clearTimeout(revealTimerRef.current);
+          revealTimerRef.current = null;
+        }
+        setRevealing(false);
         setTransitionFrame(captureFrame());
         // Release the active lens before opening another one. Multi-camera
         // phones such as the Galaxy Z Flip 6 cannot stream two rear lenses at
@@ -192,7 +226,7 @@ const useCamera = () => {
       }
 
       try {
-        const stream = await requestCameraStream(camera?.deviceId);
+        const stream = await requestCameraStream(camera);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -207,7 +241,8 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        setTransitionFrame(null);
+        if (isSwitch) reveal();
+        else setTransitionFrame(null);
       } catch (cause) {
         if (currentRequest !== requestRef.current) return;
         if (isSwitch && previousCamera) {
@@ -222,14 +257,14 @@ const useCamera = () => {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attach, captureFrame, commitActive, restore],
+    [attach, captureFrame, commitActive, restore, reveal],
   );
 
   const open = useCallback(async () => {
     setError(null);
     try {
       const list = await discover();
-      await start(list[0] ?? null);
+      await start(selectDefaultCamera(list));
     } catch (cause) {
       const kind = await classifyCameraError(cause);
       setError(messages[kind]);
@@ -240,9 +275,13 @@ const useCamera = () => {
   const selectCamera = useCallback(
     async (camera: ICameraCandidate) => {
       if (camera.deviceId === activeCameraRef.current?.deviceId || switching) return;
-      await start(camera, true);
+      const previous = activeCameraRef.current;
+      // Highlight the tapped lens immediately; the preview catches up once the
+      // new stream is ready, and restore() puts it back if the switch fails.
+      commitActive(camera);
+      await start(camera, true, previous);
     },
-    [start, switching],
+    [commitActive, start, switching],
   );
 
   const retry = useCallback(() => {
@@ -266,6 +305,7 @@ const useCamera = () => {
     return () => {
       stopStream();
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+      if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
     };
   }, [stopStream]);
 
@@ -277,6 +317,7 @@ const useCamera = () => {
     notice,
     open,
     retry,
+    revealing,
     screen,
     selectCamera,
     switching,

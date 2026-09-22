@@ -2,6 +2,8 @@ export const FOCUS_MODES = ['continuous', 'auto', 'single-shot'] as const;
 
 export type FocusMode = (typeof FOCUS_MODES)[number];
 
+export type CameraFocusMode = FocusMode | 'manual' | 'none';
+
 export const FOCUSABLE_MODES: readonly string[] = FOCUS_MODES;
 
 export interface IZoomRange {
@@ -49,5 +51,6 @@ export interface ICameraSettings extends MediaTrackSettings {
 }
 
 export interface IFocusConstraint extends MediaTrackConstraintSet {
-  focusMode?: FocusMode;
+  focusMode?: CameraFocusMode;
+  focusDistance?: number;
 }

@@ -31,10 +31,10 @@ h1 em { color: var(--orange); font-style: normal; }
 .error-message { margin: -18px 0 24px; color: #ff9c83; font-size: 13px; line-height: 1.6; }
 
 .camera-app--live { position: relative; display: flex; width: 100vw; height: 100dvh; min-height: 100svh; flex-direction: column; justify-content: flex-end; background: #111; }
-.camera-video { position: absolute; top: 50%; left: 50%; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; transform: translate(-50%, -50%); transition: opacity .22s ease, filter .22s ease; }
-.camera-video.is-switching { opacity: .45; filter: blur(3px); }
+.camera-video { position: absolute; top: 50%; left: 50%; display: block; width: 100%; height: 100%; min-width: 100%; min-height: 100%; object-fit: cover; object-position: center; transform: translate(-50%, -50%); }
 .camera-debug { position: absolute; z-index: 4; left: 10px; bottom: 120px; max-width: 240px; padding: 8px 10px; border-radius: 10px; background: #000000b3; color: #9fe3b0; font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.5; pointer-events: none; white-space: pre; }
-.transition-frame { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; background-position: center; background-size: cover; background-repeat: no-repeat; }
+.transition-frame { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; background-position: center; background-size: cover; background-repeat: no-repeat; transform: scale(1); transition: opacity .3s ease, transform .3s ease; }
+.transition-frame.is-leaving { opacity: 0; transform: scale(1.05); }
 .viewfinder { position: absolute; z-index: 2; inset: 15% 10% 35%; pointer-events: none; opacity: .42; }
 .viewfinder i { position: absolute; width: 22px; height: 22px; border-color: white; }
 .viewfinder i:nth-child(1) { top: 0; left: 0; border-top: 1px solid; border-left: 1px solid; }
@@ -45,19 +45,20 @@ h1 em { color: var(--orange); font-style: normal; }
 .status-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #f65e43; box-shadow: 0 0 10px #f65e43; }
 .round-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #ffffff40; border-radius: 50%; background: #0006; color: white; cursor: pointer; backdrop-filter: blur(10px); }
 .camera-glyph { font-size: 21px; }
-.switching-label { position: absolute; z-index: 3; top: 50%; left: 50%; padding: 9px 14px; border-radius: 999px; background: #111c; color: #fff; font-size: 12px; transform: translate(-50%, -50%); backdrop-filter: blur(12px); }
 .camera-notice { position: absolute; z-index: 3; top: calc(50% + 52px); left: 50%; padding: 9px 16px; border-radius: 999px; background: #ff6b35e6; color: #fff; font-size: 12px; font-weight: 500; transform: translate(-50%, -50%); box-shadow: 0 10px 30px #0007; }
 .camera-dock { position: relative; z-index: 2; padding: 18px 18px max(22px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #0b0c0def 18%, #0b0c0d 100%); }
 .lens-selector { overflow: hidden; width: 100%; mask-image: linear-gradient(90deg, transparent, black 16%, black 84%, transparent); }
 .lens-track { display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: center; width: 100%; min-height: 54px; transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
 .lens-track.is-dragging { transition: none; }
-.lens-slot { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 48px; padding: 0 8px; border: 0; background: transparent; color: #ffffff45; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.lens-slot { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 48px; padding: 0 8px; border: 0; background: transparent; color: #ffffff45; font-size: 12px; white-space: nowrap; cursor: pointer; transition: color .2s ease, opacity .2s ease, transform .28s cubic-bezier(.34, 1.56, .64, 1); }
 .lens-slot--side { overflow: hidden; text-overflow: ellipsis; }
 .lens-slot--side span { overflow: hidden; text-overflow: ellipsis; }
 .lens-slot--side small { color: #ffffff35; font-size: 20px; line-height: 1; }
 .lens-slot--side:disabled { cursor: default; }
-.lens-slot--active { flex-direction: column; gap: 7px; color: #fff; font-size: 14px; font-weight: 500; }
-.lens-slot--active i { width: 4px; height: 4px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 10px #ff6b35; }
+.lens-slot--active { flex-direction: column; gap: 7px; color: #fff; font-size: 14px; font-weight: 500; transform: scale(1.08); }
+.lens-slot--active i { width: 5px; height: 5px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 10px #ff6b35; }
+.lens-slot--active.is-loading i { animation: lens-pulse .9s ease-in-out infinite; }
+@keyframes lens-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.9); opacity: .35; } }
 .gesture-hint { margin: 10px 0 0; color: #686868; font-size: 10px; text-align: center; }
 .picker-sheet { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; }
 .sheet-backdrop { position: absolute; inset: 0; background: #0009; backdrop-filter: blur(5px); }
