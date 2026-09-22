@@ -26,6 +26,7 @@ const haptic = () => {
 const Home = () => {
   const {
     activeCamera,
+    activeSlot,
     cameras,
     debug,
     error,
@@ -35,8 +36,8 @@ const Home = () => {
     screen,
     selectCamera,
     switching,
-    transitionFrame,
-    videoRef,
+    videoARef,
+    videoBRef,
   } = useCamera();
   const [showPicker, setShowPicker] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -147,20 +148,21 @@ const Home = () => {
       onTouchEnd={onTouchEnd}
     >
       <video
-        ref={videoRef}
+        ref={videoARef}
         autoPlay
         muted
         playsInline
         aria-label="ภาพจากกล้องหลัง"
-        className="absolute left-1/2 top-1/2 block h-full w-full -translate-x-1/2 -translate-y-1/2 object-cover object-center"
+        className={`absolute inset-0 block h-full w-full object-cover object-center transition-opacity duration-150 ${activeSlot === 'a' ? 'opacity-100' : 'opacity-0'}`}
       />
-      {transitionFrame && (
-        <div
-          className="absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${transitionFrame})` }}
-          aria-hidden="true"
-        />
-      )}
+      <video
+        ref={videoBRef}
+        autoPlay
+        muted
+        playsInline
+        aria-hidden="true"
+        className={`absolute inset-0 block h-full w-full object-cover object-center transition-opacity duration-150 ${activeSlot === 'b' ? 'opacity-100' : 'opacity-0'}`}
+      />
       <div className="pointer-events-none absolute inset-[15%_10%_35%] z-[2] opacity-[0.42]" aria-hidden="true">
         <i className="absolute left-0 top-0 size-[22px] border-l border-t border-white" />
         <i className="absolute right-0 top-0 size-[22px] border-r border-t border-white" />

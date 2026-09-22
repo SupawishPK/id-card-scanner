@@ -27,20 +27,29 @@ export interface ICameraDebug {
   scale: string;
 }
 
+type Slot = 'a' | 'b';
+
 const useCamera = () => {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoARef = useRef<HTMLVideoElement | null>(null);
+  const videoBRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const slotRef = useRef<Slot>('a');
   const requestRef = useRef(0);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
+  const [activeSlot, setActiveSlot] = useState<Slot>('a');
   const [screen, setScreen] = useState<'intro' | 'loading' | 'live' | 'error'>('intro');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
-  const [transitionFrame, setTransitionFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
+
+  const videoFor = useCallback(
+    (slot: Slot) => (slot === 'a' ? videoARef.current : videoBRef.current),
+    [],
+  );
 
   const showNotice = useCallback((text: string) => {
     setNotice(text);
@@ -54,13 +63,9 @@ const useCamera = () => {
     streamRef.current = null;
   }, []);
 
-  /**
-   * Force the video to cover its container in pixels instead of relying on
-   * `object-fit`. Some mobile browsers letterbox the preview right after the
-   * stream changes, which leaves black bars around the image.
-   */
+  /** Report the live preview geometry (debug overlay only). */
   const fitVideo = useCallback(() => {
-    const video = videoRef.current;
+    const video = videoFor(slotRef.current);
     if (!video) return;
     const container = video.parentElement;
     if (!container) return;
@@ -69,43 +74,32 @@ const useCamera = () => {
     const ch = container.clientHeight;
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-
     const track = streamRef.current?.getVideoTracks()[0];
     const settings = track?.getSettings();
     const capabilities = track?.getCapabilities() as ICameraCapabilities | undefined;
     const capWidth = capabilities?.width?.max ?? 0;
     const capHeight = capabilities?.height?.max ?? 0;
     const cap = capWidth && capHeight ? `${capWidth}×${capHeight}` : '-';
-
-    if (!cw || !ch || !vw || !vh) {
-      setDebug({
-        container: `${cw}×${ch}`,
-        element: `${Math.round(video.clientWidth)}×${Math.round(video.clientHeight)}`,
-        intrinsic: `${vw}×${vh}`,
-        track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
-        cap,
-        scale: '-',
-      });
-      return;
-    }
-
-    const scale = Math.max(cw / vw, ch / vh);
-    video.style.width = `${Math.round(vw * scale)}px`;
-    video.style.height = `${Math.round(vh * scale)}px`;
+    const scale = vw && vh ? Math.max(cw / vw, ch / vh) : 0;
 
     setDebug({
       container: `${cw}×${ch}`,
-      element: `${Math.round(vw * scale)}×${Math.round(vh * scale)}`,
+      element: `${Math.round(video.clientWidth)}×${Math.round(video.clientHeight)}`,
       intrinsic: `${vw}×${vh}`,
       track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
       cap,
-      scale: scale.toFixed(3),
+      scale: scale ? scale.toFixed(3) : '-',
     });
-  }, []);
+  }, [videoFor]);
 
-  const attach = useCallback(
-    async (stream: MediaStream) => {
-      const video = videoRef.current;
+  /**
+   * Load a stream into a buffer video and resolve once it has painted a frame.
+   * The buffer is hidden (opacity 0) so any transient size/aspect glitch the
+   * browser shows while attaching a new stream is never visible.
+   */
+  const attachTo = useCallback(
+    async (slot: Slot, stream: MediaStream) => {
+      const video = videoFor(slot);
       if (!video) throw new Error('video element is not ready');
 
       video.srcObject = stream;
@@ -121,26 +115,9 @@ const useCamera = () => {
       } else {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
-
-      fitVideo();
     },
-    [fitVideo],
+    [videoFor],
   );
-
-  const captureFrame = useCallback((): string | null => {
-    const video = videoRef.current;
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
-      return null;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.82);
-  }, []);
 
   const discover = useCallback(async (): Promise<ICameraCandidate[]> => {
     const list = await enumerateRearCameras();
@@ -153,34 +130,35 @@ const useCamera = () => {
     setActiveCamera(camera);
   }, []);
 
-  /**
-   * Re-open the lens that was active before a failed switch so the preview is
-   * never left on a dead stream.
-   */
   const restore = useCallback(
     async (camera: ICameraCandidate, currentRequest: number) => {
+      const fromSlot = slotRef.current;
+      const toSlot: Slot = fromSlot === 'a' ? 'b' : 'a';
+
       try {
         const stream = await requestCameraStream(camera);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        await attach(stream);
+        await attachTo(toSlot, stream);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
         streamRef.current = stream;
+        slotRef.current = toSlot;
+        setActiveSlot(toSlot);
         commitActive(camera);
         setScreen('live');
-        setTransitionFrame(null);
+        fitVideo();
       } catch {
-        setTransitionFrame(null);
+        // Keep the frozen frame from before the failed switch.
       } finally {
         showNotice(SWITCH_FAILED);
       }
     },
-    [attach, commitActive, showNotice],
+    [attachTo, commitActive, fitVideo, showNotice],
   );
 
   const start = useCallback(
@@ -191,15 +169,17 @@ const useCamera = () => {
     ) => {
       const currentRequest = ++requestRef.current;
       const previousCamera = previousOverride ?? activeCameraRef.current;
+      const fromSlot = slotRef.current;
+      const toSlot: Slot = isSwitch ? (fromSlot === 'a' ? 'b' : 'a') : fromSlot;
+
       setError(null);
       setSwitching(isSwitch);
       if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
-        setTransitionFrame(captureFrame());
-        // Release the active lens before opening another one. Multi-camera
-        // phones such as the Galaxy Z Flip 6 cannot stream two rear lenses at
-        // the same time, so opening the next one while this still runs throws.
+        // Freeze the visible frame: stop the current stream, load the next one
+        // into the hidden buffer, then crossfade. The visible video element's
+        // srcObject is never reassigned, so the preview stays full-screen.
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
@@ -211,16 +191,18 @@ const useCamera = () => {
           return;
         }
 
-        await attach(stream);
+        await attachTo(toSlot, stream);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
 
         streamRef.current = stream;
+        slotRef.current = toSlot;
+        setActiveSlot(toSlot);
         commitActive(camera);
         setScreen('live');
-        setTransitionFrame(null);
+        fitVideo();
       } catch (cause) {
         if (currentRequest !== requestRef.current) return;
         if (isSwitch && previousCamera) {
@@ -230,12 +212,11 @@ const useCamera = () => {
         const kind = await classifyCameraError(cause);
         setError(messages[kind]);
         setScreen(isSwitch ? 'live' : 'error');
-        setTransitionFrame(null);
       } finally {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attach, captureFrame, commitActive, restore],
+    [attachTo, commitActive, fitVideo, restore],
   );
 
   const open = useCallback(async () => {
@@ -288,6 +269,7 @@ const useCamera = () => {
 
   return {
     activeCamera,
+    activeSlot,
     cameras,
     debug,
     error,
@@ -297,8 +279,8 @@ const useCamera = () => {
     screen,
     selectCamera,
     switching,
-    transitionFrame,
-    videoRef,
+    videoARef,
+    videoBRef,
   };
 };
 
