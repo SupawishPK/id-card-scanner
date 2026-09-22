@@ -16,6 +16,7 @@ const Home = () => {
   const {
     activeCamera,
     cameras,
+    debug,
     error,
     open,
     retry,
@@ -113,6 +114,11 @@ const Home = () => {
         </button>
       </div>
       {switching && <div className="switching-label">กำลังเปลี่ยนเลนส์...</div>}
+      {debug && (
+        <div className="camera-debug" aria-hidden="true">
+          {`container ${debug.container}\nelement   ${debug.element}\nintrinsic ${debug.intrinsic}\ntrack     ${debug.track}\nscale     ${debug.scale}`}
+        </div>
+      )}
       <section className="camera-dock" aria-label="เลือกกล้องหลัง">
         <div className="lens-selector" aria-label="เลื่อนเลือกกล้องหลัง">
           <div className={`lens-track ${dragging ? 'is-dragging' : ''}`} style={{ transform: `translate3d(${dragOffset}px, 0, 0)` }}>

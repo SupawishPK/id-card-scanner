@@ -14,6 +14,14 @@ const messages: Record<ICameraError['kind'], string> = {
   generic: 'เปิดกล้องไม่สำเร็จ ลองใหม่อีกครั้ง',
 };
 
+export interface ICameraDebug {
+  container: string;
+  element: string;
+  intrinsic: string;
+  track: string;
+  scale: string;
+}
+
 const useCamera = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -24,6 +32,7 @@ const useCamera = () => {
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [transitionFrame, setTransitionFrame] = useState<string | null>(null);
+  const [debug, setDebug] = useState<ICameraDebug | null>(null);
 
   const stopStream = useCallback(() => {
     requestRef.current += 1;
@@ -31,23 +40,72 @@ const useCamera = () => {
     streamRef.current = null;
   }, []);
 
-  const attach = useCallback(async (stream: MediaStream) => {
+  /**
+   * Force the video to cover its container in pixels instead of relying on
+   * `object-fit`. Some mobile browsers letterbox the preview right after the
+   * stream changes, which leaves black bars around the image.
+   */
+  const fitVideo = useCallback(() => {
     const video = videoRef.current;
-    if (!video) throw new Error('video element is not ready');
+    if (!video) return;
+    const container = video.parentElement;
+    if (!container) return;
 
-    video.srcObject = stream;
-    await video.play();
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      await new Promise<void>((resolve) => {
-        video.addEventListener('loadeddata', () => resolve(), { once: true });
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+
+    const track = streamRef.current?.getVideoTracks()[0];
+    const settings = track?.getSettings();
+
+    if (!cw || !ch || !vw || !vh) {
+      setDebug({
+        container: `${cw}×${ch}`,
+        element: `${Math.round(video.clientWidth)}×${Math.round(video.clientHeight)}`,
+        intrinsic: `${vw}×${vh}`,
+        track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
+        scale: '-',
       });
+      return;
     }
-    if (video.requestVideoFrameCallback) {
-      await new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
-    } else {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
+
+    const scale = Math.max(cw / vw, ch / vh);
+    video.style.width = `${Math.round(vw * scale)}px`;
+    video.style.height = `${Math.round(vh * scale)}px`;
+
+    setDebug({
+      container: `${cw}×${ch}`,
+      element: `${Math.round(vw * scale)}×${Math.round(vh * scale)}`,
+      intrinsic: `${vw}×${vh}`,
+      track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
+      scale: scale.toFixed(3),
+    });
   }, []);
+
+  const attach = useCallback(
+    async (stream: MediaStream) => {
+      const video = videoRef.current;
+      if (!video) throw new Error('video element is not ready');
+
+      video.srcObject = stream;
+      await video.play();
+
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        await new Promise<void>((resolve) => {
+          video.addEventListener('loadeddata', () => resolve(), { once: true });
+        });
+      }
+      if (video.requestVideoFrameCallback) {
+        await new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
+      } else {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+
+      fitVideo();
+    },
+    [fitVideo],
+  );
 
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
@@ -136,12 +194,25 @@ const useCamera = () => {
   }, [open, stopStream]);
 
   useEffect(() => {
+    const onResize = () => fitVideo();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    const timer = window.setInterval(fitVideo, 800);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      window.clearInterval(timer);
+    };
+  }, [fitVideo]);
+
+  useEffect(() => {
     return () => stopStream();
   }, [stopStream]);
 
   return {
     activeCamera,
     cameras,
+    debug,
     error,
     open,
     retry,
