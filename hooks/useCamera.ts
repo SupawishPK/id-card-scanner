@@ -18,6 +18,9 @@ const messages: Record<ICameraError['kind'], string> = {
 
 const SWITCH_FAILED = 'เปลี่ยนกล้องไม่สำเร็จ ลองอีกครั้ง';
 
+/** Crossfade duration (ms) when revealing a freshly attached lens. */
+const FADE_MS = 180;
+
 export interface ICameraDebug {
   container: string;
   element: string;
@@ -27,14 +30,11 @@ export interface ICameraDebug {
   scale: string;
 }
 
-type FrozenFrame = ImageBitmap | HTMLCanvasElement | null;
+type FrozenFrame = HTMLCanvasElement | null;
 
 const sourceSize = (source: CanvasImageSource): { w: number; h: number } => {
   if (source instanceof HTMLVideoElement) return { w: source.videoWidth, h: source.videoHeight };
   if (source instanceof HTMLCanvasElement) return { w: source.width, h: source.height };
-  if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
-    return { w: source.width, h: source.height };
-  }
   return { w: 0, h: 0 };
 };
 
@@ -59,6 +59,7 @@ const useCamera = () => {
   const requestRef = useRef(0);
   const frozenRef = useRef<FrozenFrame>(null);
   const liveRef = useRef(false);
+  const fadeStartRef = useRef(0);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
@@ -90,11 +91,31 @@ const useCamera = () => {
         }
 
         const video = videoRef.current;
-        const live = liveRef.current && video && video.readyState >= 2 && video.videoWidth > 0;
-        const source: CanvasImageSource | null = live ? video : frozenRef.current;
+        const live = liveRef.current && video !== null && video.readyState >= 2 && video.videoWidth > 0;
 
         ctx.clearRect(0, 0, width, height);
-        if (source) drawCover(ctx, source, width, height);
+
+        if (video && live) {
+          drawCover(ctx, video, width, height);
+
+          // Crossfade the frozen frame out over the live feed so a lens change
+          // blends instead of jumping.
+          const frozen = frozenRef.current;
+          const fadeStart = fadeStartRef.current;
+          if (frozen && fadeStart > 0) {
+            const progress = (performance.now() - fadeStart) / FADE_MS;
+            if (progress >= 1) {
+              fadeStartRef.current = 0;
+              frozenRef.current = null;
+            } else {
+              ctx.globalAlpha = 1 - progress;
+              drawCover(ctx, frozen, width, height);
+              ctx.globalAlpha = 1;
+            }
+          }
+        } else if (frozenRef.current) {
+          drawCover(ctx, frozenRef.current, width, height);
+        }
       }
       raf = requestAnimationFrame(render);
     };
@@ -140,20 +161,21 @@ const useCamera = () => {
     });
   }, []);
 
-  const freezeCurrentFrame = useCallback(async () => {
+  /**
+   * Capture the current frame synchronously (a canvas copy). Doing this before
+   * the stream is stopped keeps the canvas painting the exact same image, so
+   * there is no black gap while the next lens opens.
+   */
+  const freezeCurrentFrame = useCallback(() => {
     const video = videoRef.current;
     if (!video || video.readyState < 2 || !video.videoWidth) return;
-    try {
-      frozenRef.current = await createImageBitmap(video);
-    } catch {
-      const off = document.createElement('canvas');
-      off.width = video.videoWidth;
-      off.height = video.videoHeight;
-      const context = off.getContext('2d');
-      if (context) {
-        context.drawImage(video, 0, 0);
-        frozenRef.current = off;
-      }
+    const off = document.createElement('canvas');
+    off.width = video.videoWidth;
+    off.height = video.videoHeight;
+    const context = off.getContext('2d');
+    if (context) {
+      context.drawImage(video, 0, 0);
+      frozenRef.current = off;
     }
   }, []);
 
@@ -206,6 +228,7 @@ const useCamera = () => {
     }
 
     liveRef.current = true;
+    fadeStartRef.current = performance.now();
   }, []);
 
   const discover = useCallback(async (): Promise<ICameraCandidate[]> => {
@@ -258,10 +281,10 @@ const useCamera = () => {
       if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
-        // Freeze the current frame, then release the active lens. The canvas
-        // keeps painting the frozen frame until the next stream is settled.
+        // Freeze the current frame synchronously BEFORE stopping the stream, so
+        // the canvas never paints an empty (black) frame during the handover.
+        freezeCurrentFrame();
         liveRef.current = false;
-        await freezeCurrentFrame();
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
