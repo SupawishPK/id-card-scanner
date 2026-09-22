@@ -18,6 +18,9 @@ const messages: Record<ICameraError['kind'], string> = {
 
 const SWITCH_FAILED = 'เปลี่ยนกล้องไม่สำเร็จ ลองอีกครั้ง';
 
+/** Crossfade duration (ms) when revealing a freshly attached lens. */
+const FADE_MS = 180;
+
 export interface ICameraDebug {
   container: string;
   element: string;
@@ -26,6 +29,8 @@ export interface ICameraDebug {
   cap: string;
   scale: string;
 }
+
+type FrozenFrame = HTMLCanvasElement | null;
 
 const sourceSize = (source: CanvasImageSource): { w: number; h: number } => {
   if (source instanceof HTMLVideoElement) return { w: source.videoWidth, h: source.videoHeight };
@@ -49,9 +54,12 @@ const drawCover = (
 
 const useCamera = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const freezeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef(0);
+  const frozenRef = useRef<FrozenFrame>(null);
+  const liveRef = useRef(false);
+  const fadeStartRef = useRef(0);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
@@ -60,8 +68,108 @@ const useCamera = () => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
-  const [showFreeze, setShowFreeze] = useState(false);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
+
+  /**
+   * Paint the live camera — or the frozen frame while a new stream loads — onto
+   * a canvas that is always exactly the container size. We own the cover math,
+   * so the preview can never letterbox or shrink, unlike a <video> element
+   * whose intrinsic size briefly changes while a stream is being attached.
+   *
+   * Performance: when the feed is live we redraw on each new camera frame via
+   * `requestVideoFrameCallback` (≈ the camera fps, not the 60 Hz display), and
+   * a static frozen frame is only repainted when it changes or the canvas
+   * resizes.
+   */
+  useEffect(() => {
+    let stopped = false;
+    let rafId = 0;
+    let vfcId = 0;
+    let vfcVideo: HTMLVideoElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
+    let lastFrozen: FrozenFrame = null;
+
+    /** Returns true while a crossfade is still running (needs another frame). */
+    const paint = (): boolean => {
+      const canvas = canvasRef.current;
+      if (!canvas) return false;
+      if (!ctx) ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+      const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      const resized = canvas.width !== width || canvas.height !== height;
+      if (resized) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      const video = videoRef.current;
+      const live = liveRef.current && video !== null && video.readyState >= 2 && video.videoWidth > 0;
+
+      if (video && live) {
+        ctx.clearRect(0, 0, width, height);
+        drawCover(ctx, video, width, height);
+
+        const frozen = frozenRef.current;
+        const fadeStart = fadeStartRef.current;
+        if (frozen && fadeStart > 0) {
+          const progress = (performance.now() - fadeStart) / FADE_MS;
+          if (progress >= 1) {
+            fadeStartRef.current = 0;
+            frozenRef.current = null;
+            lastFrozen = null;
+          } else {
+            ctx.globalAlpha = 1 - progress;
+            drawCover(ctx, frozen, width, height);
+            ctx.globalAlpha = 1;
+            return true;
+          }
+        }
+        return false;
+      }
+
+      const frozen = frozenRef.current;
+      if (frozen && (resized || frozen !== lastFrozen)) {
+        ctx.clearRect(0, 0, width, height);
+        drawCover(ctx, frozen, width, height);
+      } else if (!frozen && lastFrozen !== null) {
+        ctx.clearRect(0, 0, width, height);
+      }
+      lastFrozen = frozen;
+      return false;
+    };
+
+    const loop = () => {
+      if (stopped) return;
+      const fading = paint();
+      const video = videoRef.current;
+      const live = liveRef.current && video !== null && video.videoWidth > 0;
+      const canUseFrameCallback = typeof video?.requestVideoFrameCallback === 'function';
+
+      if (!fading && live && video && canUseFrameCallback) {
+        vfcVideo = video;
+        vfcId = video.requestVideoFrameCallback(() => {
+          if (!stopped) loop();
+        });
+      } else {
+        rafId = requestAnimationFrame(() => {
+          if (!stopped) loop();
+        });
+      }
+    };
+
+    loop();
+
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(rafId);
+      if (vfcVideo && vfcId && typeof vfcVideo.cancelVideoFrameCallback === 'function') {
+        vfcVideo.cancelVideoFrameCallback(vfcId);
+      }
+    };
+  }, []);
 
   const showNotice = useCallback((text: string) => {
     setNotice(text);
@@ -77,7 +185,7 @@ const useCamera = () => {
 
   const fitVideo = useCallback(() => {
     const video = videoRef.current;
-    const canvas = freezeCanvasRef.current;
+    const canvas = canvasRef.current;
     if (!video || !canvas) return;
     const cw = canvas.clientWidth;
     const ch = canvas.clientHeight;
@@ -93,7 +201,7 @@ const useCamera = () => {
 
     setDebug({
       container: `${cw}×${ch}`,
-      element: `${video.clientWidth}×${video.clientHeight}`,
+      element: `${canvas.width}×${canvas.height}`,
       intrinsic: `${vw}×${vh}`,
       track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
       cap,
@@ -102,25 +210,21 @@ const useCamera = () => {
   }, []);
 
   /**
-   * Paint the current video frame onto the freeze canvas (cover math). The
-   * canvas sits above the video and hides the browser's transient re-render of
-   * the video element while a new stream is attached.
+   * Capture the current frame synchronously (a canvas copy). Doing this before
+   * the stream is stopped keeps the canvas painting the exact same image, so
+   * there is no black gap while the next lens opens.
    */
-  const drawFreeze = useCallback(() => {
+  const freezeCurrentFrame = useCallback(() => {
     const video = videoRef.current;
-    const canvas = freezeCanvasRef.current;
-    if (!video || !canvas || video.readyState < 2 || !video.videoWidth) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
-    const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    const off = document.createElement('canvas');
+    off.width = video.videoWidth;
+    off.height = video.videoHeight;
+    const context = off.getContext('2d');
+    if (context) {
+      context.drawImage(video, 0, 0);
+      frozenRef.current = off;
     }
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, width, height);
-    drawCover(ctx, video, width, height);
   }, []);
 
   const attach = useCallback(async (stream: MediaStream) => {
@@ -154,8 +258,8 @@ const useCamera = () => {
 
     await nextFrame();
 
-    // Let the intrinsic size settle (rotation applied) before the freeze frame
-    // is removed, so the video is already full-screen when it is revealed.
+    // Wait until the intrinsic size stops changing (rotation applied) before
+    // the canvas switches from the frozen frame to the live feed.
     let stable = 0;
     let lastWidth = video.videoWidth;
     let lastHeight = video.videoHeight;
@@ -170,6 +274,9 @@ const useCamera = () => {
         lastHeight = video.videoHeight;
       }
     }
+
+    liveRef.current = true;
+    fadeStartRef.current = performance.now();
   }, []);
 
   const discover = useCallback(async (): Promise<ICameraCandidate[]> => {
@@ -199,10 +306,9 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        setShowFreeze(false);
         fitVideo();
       } catch {
-        setShowFreeze(false);
+        liveRef.current = true;
       } finally {
         showNotice(SWITCH_FAILED);
       }
@@ -220,15 +326,13 @@ const useCamera = () => {
       const previousCamera = previousOverride ?? activeCameraRef.current;
       setError(null);
       setSwitching(isSwitch);
-      if (!isSwitch) {
-        setScreen('loading');
-        setShowFreeze(false);
-      }
+      if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
-        // Cover the loading window with the current frame, then release the lens.
-        drawFreeze();
-        setShowFreeze(true);
+        // Freeze the current frame synchronously BEFORE stopping the stream, so
+        // the canvas never paints an empty (black) frame during the handover.
+        freezeCurrentFrame();
+        liveRef.current = false;
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
@@ -247,7 +351,6 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        setShowFreeze(false);
         fitVideo();
       } catch (cause) {
         if (currentRequest !== requestRef.current) return;
@@ -255,7 +358,7 @@ const useCamera = () => {
           await restore(previousCamera, currentRequest);
           return;
         }
-        setShowFreeze(false);
+        liveRef.current = true;
         const kind = await classifyCameraError(cause);
         setError(messages[kind]);
         setScreen(isSwitch ? 'live' : 'error');
@@ -263,7 +366,7 @@ const useCamera = () => {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attach, commitActive, drawFreeze, fitVideo, restore],
+    [attach, commitActive, fitVideo, freezeCurrentFrame, restore],
   );
 
   const open = useCallback(async () => {
@@ -318,15 +421,14 @@ const useCamera = () => {
   return {
     activeCamera,
     cameras,
+    canvasRef,
     debug,
     error,
-    freezeCanvasRef,
     notice,
     open,
     retry,
     screen,
     selectCamera,
-    showFreeze,
     switching,
     videoRef,
   };
