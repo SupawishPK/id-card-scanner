@@ -10,9 +10,10 @@ const FLICK_VELOCITY = 0.45;
 
 const cameraTitle = (camera: ICameraCandidate, index: number) => {
   const label = camera.label.toLowerCase();
-  if (label.includes('ultra') || label.includes('wide')) return 'มุมกว้าง';
   if (label.includes('tele') || label.includes('zoom')) return 'ซูม';
-  return index === 0 ? 'กล้องหลัก' : `กล้องหลัง ${index + 1}`;
+  if (label.includes('ultra') || camera.lensKind === 'ultra-wide') return 'มุมกว้าง';
+  if (camera.lensKind === 'main-wide') return 'กล้องหลัก';
+  return `กล้อง ${index + 1}`;
 };
 
 const haptic = () => {
@@ -259,9 +260,11 @@ const Home = () => {
                   }}
                 >
                   <span className={`grid size-9 place-items-center rounded-xl ${selected ? 'bg-accent/10 text-accent' : 'bg-white/[0.05] text-[#aaa]'}`}>{index + 1}</span>
-                  <span>
+                  <span className="min-w-0 flex-1">
                     <strong className="block text-sm font-medium">{cameraTitle(camera, index)}</strong>
-                    <small className="mt-[3px] block text-[11px] text-[#777]">{camera.hasAutofocus ? 'โฟกัสอัตโนมัติ' : 'โฟกัสมาตรฐาน'}</small>
+                    <small className="mt-[3px] block truncate text-[11px] text-[#777]">
+                      {camera.label || 'ไม่ระบุชื่อ'} · {camera.hasAutofocus ? 'โฟกัสอัตโนมัติ' : 'โฟกัสมาตรฐาน'}
+                    </small>
                   </span>
                   <span className="ml-auto text-xl text-accent">{selected ? '✓' : '›'}</span>
                 </button>
