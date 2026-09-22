@@ -17,6 +17,8 @@ const Home = () => {
     useCamera();
   const [showPicker, setShowPicker] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [settling, setSettling] = useState(false);
   const touchStart = useRef<number | null>(null);
 
   useEffect(() => {
@@ -29,13 +31,15 @@ const Home = () => {
   }, [showPicker]);
 
   const onTouchStart = (event: React.TouchEvent) => {
+    if (switching || settling) return;
     touchStart.current = event.touches[0]?.clientX ?? null;
     setDragOffset(0);
+    setDragging(true);
   };
 
   const onTouchMove = (event: React.TouchEvent) => {
     const start = touchStart.current;
-    if (start === null || switching) return;
+    if (start === null || switching || settling) return;
     const delta = (event.touches[0]?.clientX ?? start) - start;
     setDragOffset(Math.max(-72, Math.min(72, delta)));
   };
@@ -43,13 +47,28 @@ const Home = () => {
   const onTouchEnd = (event: React.TouchEvent) => {
     const start = touchStart.current;
     touchStart.current = null;
+    setDragging(false);
     setDragOffset(0);
-    if (start === null || cameras.length < 2 || switching) return;
+    if (start === null || cameras.length < 2 || switching || settling) return;
     const delta = (event.changedTouches[0]?.clientX ?? start) - start;
     if (Math.abs(delta) < 55) return;
     const current = cameras.findIndex((camera) => camera.deviceId === activeCamera?.deviceId);
     const nextIndex = (current + (delta < 0 ? 1 : -1) + cameras.length) % cameras.length;
-    void selectCamera(cameras[nextIndex]);
+    setSettling(true);
+    setDragOffset(delta < 0 ? -110 : 110);
+    window.setTimeout(() => {
+      setDragOffset(0);
+      setSettling(false);
+      void selectCamera(cameras[nextIndex]);
+    }, 180);
+  };
+
+  const activeIndex = Math.max(0, cameras.findIndex((camera) => camera.deviceId === activeCamera?.deviceId));
+  const previousCamera = cameras[activeIndex - 1];
+  const nextCamera = cameras[activeIndex + 1];
+  const selectNeighbor = (camera?: ICameraCandidate) => {
+    if (!camera || switching || settling) return;
+    void selectCamera(camera);
   };
 
   if (screen === 'intro' || screen === 'error') {
@@ -84,18 +103,21 @@ const Home = () => {
       </div>
       {switching && <div className="switching-label">กำลังเปลี่ยนเลนส์...</div>}
       <section className="camera-dock" aria-label="เลือกกล้องหลัง">
-        <div className="dock-heading"><span>กล้องหลัง</span><span>{cameras.length} เลนส์</span></div>
-        <div className="lens-list" style={{ transform: `translate3d(${dragOffset}px, 0, 0)` }}>
-          {cameras.map((camera, index) => {
-            const selected = camera.deviceId === activeCamera?.deviceId;
-            return <button key={camera.deviceId} type="button" className={`lens-pill ${selected ? 'is-selected' : ''}`} onClick={() => void selectCamera(camera)} disabled={switching}>
-              <span className="lens-index">{String(index + 1).padStart(2, '0')}</span>
-              <span className="lens-name">{cameraTitle(camera, index)}</span>
-              {selected && <span className="check">✓</span>}
-            </button>;
-          })}
+        <div className="lens-selector" aria-label="เลื่อนเลือกกล้องหลัง">
+          <div className={`lens-track ${dragging ? 'is-dragging' : ''}`} style={{ transform: `translate3d(${dragOffset}px, 0, 0)` }}>
+            <button type="button" className="lens-slot lens-slot--side" onClick={() => selectNeighbor(previousCamera)} disabled={!previousCamera || switching || settling}>
+              {previousCamera && <><span>{cameraTitle(previousCamera, activeIndex - 1)}</span><small>‹</small></>}
+            </button>
+            <div className="lens-slot lens-slot--active" aria-live="polite">
+              <span>{activeCamera ? cameraTitle(activeCamera, activeIndex) : 'กล้องหลัก'}</span>
+              <i />
+            </div>
+            <button type="button" className="lens-slot lens-slot--side" onClick={() => selectNeighbor(nextCamera)} disabled={!nextCamera || switching || settling}>
+              {nextCamera && <><small>›</small><span>{cameraTitle(nextCamera, activeIndex + 1)}</span></>}
+            </button>
+          </div>
         </div>
-        <p className="gesture-hint">แตะเลนส์ หรือปัดซ้ายขวา</p>
+        <p className="gesture-hint">ปัดเพื่อเปลี่ยนกล้อง</p>
       </section>
       {showPicker && <div className="picker-sheet" role="dialog" aria-modal="true" aria-label="เลือกกล้องหลัง">
         <div className="sheet-backdrop" onClick={() => setShowPicker(false)} />

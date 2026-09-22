@@ -45,16 +45,16 @@ h1 em { color: var(--orange); font-style: normal; }
 .camera-glyph { font-size: 21px; }
 .switching-label { position: absolute; top: 50%; left: 50%; padding: 9px 14px; border-radius: 999px; background: #111c; color: #fff; font-size: 12px; transform: translate(-50%, -50%); backdrop-filter: blur(12px); }
 .camera-dock { position: relative; z-index: 2; padding: 18px 18px max(22px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #0b0c0def 18%, #0b0c0d 100%); }
-.dock-heading { display: flex; justify-content: space-between; margin-bottom: 12px; color: #aaa; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-.lens-list { display: flex; justify-content: center; gap: 8px; overflow: hidden; padding: 4px 0 7px; transition: transform .24s cubic-bezier(.22, 1, .36, 1); scrollbar-width: none; }
-.lens-list::-webkit-scrollbar { display: none; }
-.lens-pill { display: flex; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 74px; min-height: 42px; padding: 0 12px; border: 1px solid #ffffff19; border-radius: 999px; background: #ffffff0b; color: #aaa; font-size: 11px; cursor: pointer; transition: transform .24s cubic-bezier(.22, 1, .36, 1), border-color .2s ease, background .2s ease, color .2s ease; }
-.lens-pill.is-selected { min-width: 106px; border-color: var(--orange); background: #ff6b3522; color: white; transform: scale(1.06); }
-.lens-pill:disabled { opacity: .62; }
-.lens-index { display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: #ffffff0d; color: #777; font-size: 9px; }
-.lens-pill.is-selected .lens-index { background: var(--orange); color: white; }
-.lens-name { white-space: nowrap; }
-.check { color: var(--orange); font-weight: 700; }
+.lens-selector { overflow: hidden; width: 100%; mask-image: linear-gradient(90deg, transparent, black 16%, black 84%, transparent); }
+.lens-track { display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: center; width: 100%; min-height: 54px; transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
+.lens-track.is-dragging { transition: none; }
+.lens-slot { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 48px; padding: 0 8px; border: 0; background: transparent; color: #ffffff45; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.lens-slot--side { overflow: hidden; text-overflow: ellipsis; }
+.lens-slot--side span { overflow: hidden; text-overflow: ellipsis; }
+.lens-slot--side small { color: #ffffff35; font-size: 20px; line-height: 1; }
+.lens-slot--side:disabled { cursor: default; }
+.lens-slot--active { flex-direction: column; gap: 7px; color: #fff; font-size: 14px; font-weight: 500; }
+.lens-slot--active i { width: 4px; height: 4px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 10px #ff6b35; }
 .gesture-hint { margin: 10px 0 0; color: #686868; font-size: 10px; text-align: center; }
 .picker-sheet { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; }
 .sheet-backdrop { position: absolute; inset: 0; background: #0009; backdrop-filter: blur(5px); }
