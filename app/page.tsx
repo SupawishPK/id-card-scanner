@@ -32,7 +32,6 @@ const Home = () => {
     notice,
     open,
     retry,
-    revealing,
     screen,
     selectCamera,
     switching,
@@ -157,7 +156,7 @@ const Home = () => {
       />
       {transitionFrame && (
         <div
-          className={`absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat transition-opacity duration-300 ${revealing ? 'opacity-0' : ''}`}
+          className="absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat"
           style={{ backgroundImage: `url(${transitionFrame})` }}
           aria-hidden="true"
         />

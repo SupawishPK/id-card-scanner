@@ -33,14 +33,12 @@ const useCamera = () => {
   const requestRef = useRef(0);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
-  const revealTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
   const [screen, setScreen] = useState<'intro' | 'loading' | 'live' | 'error'>('intro');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
-  const [revealing, setRevealing] = useState(false);
   const [transitionFrame, setTransitionFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
 
@@ -48,20 +46,6 @@ const useCamera = () => {
     setNotice(text);
     if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
     noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2600);
-  }, []);
-
-  /**
-   * Fade the frozen frame out and play the lens zoom pulse as the new stream is
-   * revealed, mimicking the native Android lens switch.
-   */
-  const reveal = useCallback(() => {
-    if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
-    setRevealing(true);
-    revealTimerRef.current = window.setTimeout(() => {
-      setRevealing(false);
-      setTransitionFrame(null);
-      revealTimerRef.current = null;
-    }, 340);
   }, []);
 
   const stopStream = useCallback(() => {
@@ -189,14 +173,14 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        reveal();
+        setTransitionFrame(null);
       } catch {
         setTransitionFrame(null);
       } finally {
         showNotice(SWITCH_FAILED);
       }
     },
-    [attach, commitActive, reveal, showNotice],
+    [attach, commitActive, showNotice],
   );
 
   const start = useCallback(
@@ -212,11 +196,6 @@ const useCamera = () => {
       if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
-        if (revealTimerRef.current) {
-          window.clearTimeout(revealTimerRef.current);
-          revealTimerRef.current = null;
-        }
-        setRevealing(false);
         setTransitionFrame(captureFrame());
         // Release the active lens before opening another one. Multi-camera
         // phones such as the Galaxy Z Flip 6 cannot stream two rear lenses at
@@ -241,8 +220,7 @@ const useCamera = () => {
         streamRef.current = stream;
         commitActive(camera);
         setScreen('live');
-        if (isSwitch) reveal();
-        else setTransitionFrame(null);
+        setTransitionFrame(null);
       } catch (cause) {
         if (currentRequest !== requestRef.current) return;
         if (isSwitch && previousCamera) {
@@ -257,7 +235,7 @@ const useCamera = () => {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attach, captureFrame, commitActive, restore, reveal],
+    [attach, captureFrame, commitActive, restore],
   );
 
   const open = useCallback(async () => {
@@ -305,7 +283,6 @@ const useCamera = () => {
     return () => {
       stopStream();
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
-      if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
     };
   }, [stopStream]);
 
@@ -317,7 +294,6 @@ const useCamera = () => {
     notice,
     open,
     retry,
-    revealing,
     screen,
     selectCamera,
     switching,
