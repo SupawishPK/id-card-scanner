@@ -16,6 +16,7 @@ const Home = () => {
   const { activeCamera, cameras, error, open, retry, screen, selectCamera, switching, videoRef } =
     useCamera();
   const [showPicker, setShowPicker] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
   const touchStart = useRef<number | null>(null);
 
   useEffect(() => {
@@ -29,11 +30,20 @@ const Home = () => {
 
   const onTouchStart = (event: React.TouchEvent) => {
     touchStart.current = event.touches[0]?.clientX ?? null;
+    setDragOffset(0);
+  };
+
+  const onTouchMove = (event: React.TouchEvent) => {
+    const start = touchStart.current;
+    if (start === null || switching) return;
+    const delta = (event.touches[0]?.clientX ?? start) - start;
+    setDragOffset(Math.max(-72, Math.min(72, delta)));
   };
 
   const onTouchEnd = (event: React.TouchEvent) => {
     const start = touchStart.current;
     touchStart.current = null;
+    setDragOffset(0);
     if (start === null || cameras.length < 2 || switching) return;
     const delta = (event.changedTouches[0]?.clientX ?? start) - start;
     if (Math.abs(delta) < 55) return;
@@ -63,7 +73,7 @@ const Home = () => {
   }
 
   return (
-    <main className="camera-app camera-app--live" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <main className="camera-app camera-app--live" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       <video ref={videoRef} autoPlay muted playsInline aria-label="ภาพจากกล้องหลัง" className={`camera-video ${switching ? 'is-switching' : ''}`} />
       <div className="viewfinder" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="live-topbar">
@@ -75,17 +85,17 @@ const Home = () => {
       {switching && <div className="switching-label">กำลังเปลี่ยนเลนส์...</div>}
       <section className="camera-dock" aria-label="เลือกกล้องหลัง">
         <div className="dock-heading"><span>กล้องหลัง</span><span>{cameras.length} เลนส์</span></div>
-        <div className="lens-list">
+        <div className="lens-list" style={{ transform: `translate3d(${dragOffset}px, 0, 0)` }}>
           {cameras.map((camera, index) => {
             const selected = camera.deviceId === activeCamera?.deviceId;
             return <button key={camera.deviceId} type="button" className={`lens-pill ${selected ? 'is-selected' : ''}`} onClick={() => void selectCamera(camera)} disabled={switching}>
               <span className="lens-index">{String(index + 1).padStart(2, '0')}</span>
-              <span>{cameraTitle(camera, index)}</span>
+              <span className="lens-name">{cameraTitle(camera, index)}</span>
               {selected && <span className="check">✓</span>}
             </button>;
           })}
         </div>
-        <p className="gesture-hint">ปัดซ้ายหรือขวาเพื่อเปลี่ยนกล้อง</p>
+        <p className="gesture-hint">แตะเลนส์ หรือปัดซ้ายขวา</p>
       </section>
       {showPicker && <div className="picker-sheet" role="dialog" aria-modal="true" aria-label="เลือกกล้องหลัง">
         <div className="sheet-backdrop" onClick={() => setShowPicker(false)} />
