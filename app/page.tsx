@@ -8,14 +8,7 @@ import type { ICameraCandidate } from '@/lib/camera/types';
 const FLICK_DISTANCE = 55;
 const FLICK_VELOCITY = 0.45;
 
-const lensLabel = (camera: ICameraCandidate, index: number, cameras: ICameraCandidate[]) => {
-  if (camera.lensKind === 'ultra-wide') return 'มุมกว้าง';
-  if (camera.lensKind === 'main-wide') {
-    const primary = cameras.findIndex((item) => item.lensKind === 'main-wide');
-    return primary === index ? 'กล้องหลัก' : `กล้อง ${index + 1}`;
-  }
-  return `กล้อง ${index + 1}`;
-};
+const lensLabel = (index: number) => `กล้อง ${index + 1}`;
 
 const haptic = () => {
   try {
@@ -213,13 +206,13 @@ const Home = () => {
             >
               {previousCamera && (
                 <>
-                  <span className="overflow-hidden text-ellipsis">{lensLabel(previousCamera, activeIndex - 1, cameras)}</span>
+                  <span className="overflow-hidden text-ellipsis">{lensLabel(activeIndex - 1)}</span>
                   <small className="text-xl leading-none text-white/[0.21]">‹</small>
                 </>
               )}
             </button>
             <div className="flex scale-[1.08] flex-col items-center justify-center gap-[7px] text-sm font-medium text-white" aria-live="polite">
-              <span>{activeCamera ? lensLabel(activeCamera, activeIndex, cameras) : 'กล้องหลัก'}</span>
+              <span>{activeCamera ? lensLabel(activeIndex) : 'กล้อง 1'}</span>
               <i className={`size-[5px] rounded-full bg-accent shadow-[0_0_10px_#ff6b35] ${switching ? 'animate-lens-pulse' : ''}`} />
             </div>
             <button
@@ -231,7 +224,7 @@ const Home = () => {
               {nextCamera && (
                 <>
                   <small className="text-xl leading-none text-white/[0.21]">›</small>
-                  <span className="overflow-hidden text-ellipsis">{lensLabel(nextCamera, activeIndex + 1, cameras)}</span>
+                  <span className="overflow-hidden text-ellipsis">{lensLabel(activeIndex + 1)}</span>
                 </>
               )}
             </button>
@@ -262,7 +255,7 @@ const Home = () => {
                 >
                   <span className={`grid size-9 place-items-center rounded-xl ${selected ? 'bg-accent/10 text-accent' : 'bg-white/[0.05] text-[#aaa]'}`}>{index + 1}</span>
                   <span className="min-w-0 flex-1">
-                    <strong className="block text-sm font-medium">{lensLabel(camera, index, cameras)}</strong>
+                    <strong className="block text-sm font-medium">{lensLabel(index)}</strong>
                     <small className="mt-[3px] block truncate text-[11px] text-[#777]">
                       {camera.label || 'ไม่ระบุชื่อ'} · {camera.hasAutofocus ? 'โฟกัสอัตโนมัติ' : 'โฟกัสมาตรฐาน'}
                     </small>
