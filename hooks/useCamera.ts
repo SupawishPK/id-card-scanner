@@ -74,52 +74,100 @@ const useCamera = () => {
    * a canvas that is always exactly the container size. We own the cover math,
    * so the preview can never letterbox or shrink, unlike a <video> element
    * whose intrinsic size briefly changes while a stream is being attached.
+   *
+   * Performance: when the feed is live we redraw on each new camera frame via
+   * `requestVideoFrameCallback` (≈ the camera fps, not the 60 Hz display), and
+   * a static frozen frame is only repainted when it changes or the canvas
+   * resizes.
    */
   useEffect(() => {
-    let raf = 0;
-    const render = () => {
+    let stopped = false;
+    let rafId = 0;
+    let vfcId = 0;
+    let vfcVideo: HTMLVideoElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
+    let lastFrozen: FrozenFrame = null;
+
+    /** Returns true while a crossfade is still running (needs another frame). */
+    const paint = (): boolean => {
       const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      if (canvas && ctx) {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
-        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
-        if (canvas.width !== width || canvas.height !== height) {
-          canvas.width = width;
-          canvas.height = height;
-        }
+      if (!canvas) return false;
+      if (!ctx) ctx = canvas.getContext('2d');
+      if (!ctx) return false;
 
-        const video = videoRef.current;
-        const live = liveRef.current && video !== null && video.readyState >= 2 && video.videoWidth > 0;
-
-        ctx.clearRect(0, 0, width, height);
-
-        if (video && live) {
-          drawCover(ctx, video, width, height);
-
-          // Crossfade the frozen frame out over the live feed so a lens change
-          // blends instead of jumping.
-          const frozen = frozenRef.current;
-          const fadeStart = fadeStartRef.current;
-          if (frozen && fadeStart > 0) {
-            const progress = (performance.now() - fadeStart) / FADE_MS;
-            if (progress >= 1) {
-              fadeStartRef.current = 0;
-              frozenRef.current = null;
-            } else {
-              ctx.globalAlpha = 1 - progress;
-              drawCover(ctx, frozen, width, height);
-              ctx.globalAlpha = 1;
-            }
-          }
-        } else if (frozenRef.current) {
-          drawCover(ctx, frozenRef.current, width, height);
-        }
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+      const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      const resized = canvas.width !== width || canvas.height !== height;
+      if (resized) {
+        canvas.width = width;
+        canvas.height = height;
       }
-      raf = requestAnimationFrame(render);
+
+      const video = videoRef.current;
+      const live = liveRef.current && video !== null && video.readyState >= 2 && video.videoWidth > 0;
+
+      if (video && live) {
+        ctx.clearRect(0, 0, width, height);
+        drawCover(ctx, video, width, height);
+
+        const frozen = frozenRef.current;
+        const fadeStart = fadeStartRef.current;
+        if (frozen && fadeStart > 0) {
+          const progress = (performance.now() - fadeStart) / FADE_MS;
+          if (progress >= 1) {
+            fadeStartRef.current = 0;
+            frozenRef.current = null;
+            lastFrozen = null;
+          } else {
+            ctx.globalAlpha = 1 - progress;
+            drawCover(ctx, frozen, width, height);
+            ctx.globalAlpha = 1;
+            return true;
+          }
+        }
+        return false;
+      }
+
+      const frozen = frozenRef.current;
+      if (frozen && (resized || frozen !== lastFrozen)) {
+        ctx.clearRect(0, 0, width, height);
+        drawCover(ctx, frozen, width, height);
+      } else if (!frozen && lastFrozen !== null) {
+        ctx.clearRect(0, 0, width, height);
+      }
+      lastFrozen = frozen;
+      return false;
     };
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
+
+    const loop = () => {
+      if (stopped) return;
+      const fading = paint();
+      const video = videoRef.current;
+      const live = liveRef.current && video !== null && video.videoWidth > 0;
+      const canUseFrameCallback = typeof video?.requestVideoFrameCallback === 'function';
+
+      if (!fading && live && video && canUseFrameCallback) {
+        vfcVideo = video;
+        vfcId = video.requestVideoFrameCallback(() => {
+          if (!stopped) loop();
+        });
+      } else {
+        rafId = requestAnimationFrame(() => {
+          if (!stopped) loop();
+        });
+      }
+    };
+
+    loop();
+
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(rafId);
+      if (vfcVideo && vfcId && typeof vfcVideo.cancelVideoFrameCallback === 'function') {
+        vfcVideo.cancelVideoFrameCallback(vfcId);
+      }
+    };
   }, []);
 
   const showNotice = useCallback((text: string) => {
