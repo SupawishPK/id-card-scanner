@@ -93,9 +93,12 @@ const useCamera = () => {
   }, [videoFor]);
 
   /**
-   * Load a stream into a buffer video and resolve once it has painted a frame.
-   * The buffer is hidden (opacity 0) so any transient size/aspect glitch the
-   * browser shows while attaching a new stream is never visible.
+   * Load a stream into a buffer video and resolve once it has painted a frame
+   * AND its intrinsic size has settled. A freshly attached camera stream can
+   * report its pre-rotation dimensions for the first frames (portrait vs
+   * landscape); revealing before it settles shows the image narrow with side
+   * gaps before it expands to full. The buffer is hidden (opacity 0), so the
+   * settle happens out of sight.
    */
   const attachTo = useCallback(
     async (slot: Slot, stream: MediaStream) => {
@@ -110,10 +113,39 @@ const useCamera = () => {
           video.addEventListener('loadeddata', () => resolve(), { once: true });
         });
       }
-      if (video.requestVideoFrameCallback) {
-        await new Promise<void>((resolve) => video.requestVideoFrameCallback(() => resolve()));
-      } else {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const nextFrame = () =>
+        new Promise<void>((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          if (video.requestVideoFrameCallback) {
+            video.requestVideoFrameCallback(() => finish());
+          } else {
+            requestAnimationFrame(() => finish());
+          }
+          window.setTimeout(finish, 120);
+        });
+
+      await nextFrame();
+
+      // Wait until the intrinsic size stops changing (rotation applied).
+      let stable = 0;
+      let lastWidth = video.videoWidth;
+      let lastHeight = video.videoHeight;
+      const deadline = performance.now() + 600;
+      while (stable < 2 && performance.now() < deadline) {
+        await nextFrame();
+        if (video.videoWidth === lastWidth && video.videoHeight === lastHeight) {
+          stable += 1;
+        } else {
+          stable = 0;
+          lastWidth = video.videoWidth;
+          lastHeight = video.videoHeight;
+        }
       }
     },
     [videoFor],

@@ -40,6 +40,8 @@
     min-height: 100%;
     margin: 0;
     background: #0b0c0d;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body {
