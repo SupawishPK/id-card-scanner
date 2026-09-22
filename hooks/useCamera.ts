@@ -27,30 +27,80 @@ export interface ICameraDebug {
   scale: string;
 }
 
-type Slot = 'a' | 'b';
+type FrozenFrame = ImageBitmap | HTMLCanvasElement | null;
+
+const sourceSize = (source: CanvasImageSource): { w: number; h: number } => {
+  if (source instanceof HTMLVideoElement) return { w: source.videoWidth, h: source.videoHeight };
+  if (source instanceof HTMLCanvasElement) return { w: source.width, h: source.height };
+  if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
+    return { w: source.width, h: source.height };
+  }
+  return { w: 0, h: 0 };
+};
+
+const drawCover = (
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+): void => {
+  const { w, h } = sourceSize(source);
+  if (!w || !h) return;
+  const scale = Math.max(width / w, height / h);
+  const dw = w * scale;
+  const dh = h * scale;
+  ctx.drawImage(source, (width - dw) / 2, (height - dh) / 2, dw, dh);
+};
 
 const useCamera = () => {
-  const videoARef = useRef<HTMLVideoElement | null>(null);
-  const videoBRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const slotRef = useRef<Slot>('a');
   const requestRef = useRef(0);
+  const frozenRef = useRef<FrozenFrame>(null);
+  const liveRef = useRef(false);
   const activeCameraRef = useRef<ICameraCandidate | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<ICameraCandidate[]>([]);
   const [activeCamera, setActiveCamera] = useState<ICameraCandidate | null>(null);
-  const [activeSlot, setActiveSlot] = useState<Slot>('a');
   const [screen, setScreen] = useState<'intro' | 'loading' | 'live' | 'error'>('intro');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
-  const [freezeFrame, setFreezeFrame] = useState<string | null>(null);
   const [debug, setDebug] = useState<ICameraDebug | null>(null);
 
-  const videoFor = useCallback(
-    (slot: Slot) => (slot === 'a' ? videoARef.current : videoBRef.current),
-    [],
-  );
+  /**
+   * Paint the live camera — or the frozen frame while a new stream loads — onto
+   * a canvas that is always exactly the container size. We own the cover math,
+   * so the preview can never letterbox or shrink, unlike a <video> element
+   * whose intrinsic size briefly changes while a stream is being attached.
+   */
+  useEffect(() => {
+    let raf = 0;
+    const render = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (canvas && ctx) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+
+        const video = videoRef.current;
+        const live = liveRef.current && video && video.readyState >= 2 && video.videoWidth > 0;
+        const source: CanvasImageSource | null = live ? video : frozenRef.current;
+
+        ctx.clearRect(0, 0, width, height);
+        if (source) drawCover(ctx, source, width, height);
+      }
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   const showNotice = useCallback((text: string) => {
     setNotice(text);
@@ -64,15 +114,12 @@ const useCamera = () => {
     streamRef.current = null;
   }, []);
 
-  /** Report the live preview geometry (debug overlay only). */
   const fitVideo = useCallback(() => {
-    const video = videoFor(slotRef.current);
-    if (!video) return;
-    const container = video.parentElement;
-    if (!container) return;
-
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     const track = streamRef.current?.getVideoTracks()[0];
@@ -85,91 +132,81 @@ const useCamera = () => {
 
     setDebug({
       container: `${cw}×${ch}`,
-      element: `${Math.round(video.clientWidth)}×${Math.round(video.clientHeight)}`,
+      element: `${canvas.width}×${canvas.height}`,
       intrinsic: `${vw}×${vh}`,
       track: settings ? `${settings.width ?? '?'}×${settings.height ?? '?'}` : '-',
       cap,
       scale: scale ? scale.toFixed(3) : '-',
     });
-  }, [videoFor]);
+  }, []);
 
-  /**
-   * Capture the currently visible video frame so it can cover the loading
-   * window (old stream stopped, new stream not ready). Without it, some
-   * devices shrink/black out the visible video the moment its track stops.
-   */
-  const captureFrame = useCallback((): string | null => {
-    const video = videoFor(slotRef.current);
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
-      return null;
+  const freezeCurrentFrame = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth) return;
+    try {
+      frozenRef.current = await createImageBitmap(video);
+    } catch {
+      const off = document.createElement('canvas');
+      off.width = video.videoWidth;
+      off.height = video.videoHeight;
+      const context = off.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0);
+        frozenRef.current = off;
+      }
     }
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.82);
-  }, [videoFor]);
+  }, []);
 
-  /**
-   * Load a stream into a buffer video and resolve once it has painted a frame
-   * AND its intrinsic size has settled. A freshly attached camera stream can
-   * report its pre-rotation dimensions for the first frames (portrait vs
-   * landscape); revealing before it settles shows the image narrow with side
-   * gaps before it expands to full. The buffer is hidden (opacity 0), so the
-   * settle happens out of sight.
-   */
-  const attachTo = useCallback(
-    async (slot: Slot, stream: MediaStream) => {
-      const video = videoFor(slot);
-      if (!video) throw new Error('video element is not ready');
+  const attach = useCallback(async (stream: MediaStream) => {
+    const video = videoRef.current;
+    if (!video) throw new Error('video element is not ready');
 
-      video.srcObject = stream;
-      await video.play();
+    video.srcObject = stream;
+    await video.play();
 
-      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        await new Promise<void>((resolve) => {
-          video.addEventListener('loadeddata', () => resolve(), { once: true });
-        });
-      }
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await new Promise<void>((resolve) => {
+        video.addEventListener('loadeddata', () => resolve(), { once: true });
+      });
+    }
 
-      const nextFrame = () =>
-        new Promise<void>((resolve) => {
-          let done = false;
-          const finish = () => {
-            if (done) return;
-            done = true;
-            resolve();
-          };
-          if (video.requestVideoFrameCallback) {
-            video.requestVideoFrameCallback(() => finish());
-          } else {
-            requestAnimationFrame(() => finish());
-          }
-          window.setTimeout(finish, 120);
-        });
-
-      await nextFrame();
-
-      // Wait until the intrinsic size stops changing (rotation applied).
-      let stable = 0;
-      let lastWidth = video.videoWidth;
-      let lastHeight = video.videoHeight;
-      const deadline = performance.now() + 600;
-      while (stable < 2 && performance.now() < deadline) {
-        await nextFrame();
-        if (video.videoWidth === lastWidth && video.videoHeight === lastHeight) {
-          stable += 1;
+    const nextFrame = () =>
+      new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          resolve();
+        };
+        if (video.requestVideoFrameCallback) {
+          video.requestVideoFrameCallback(() => finish());
         } else {
-          stable = 0;
-          lastWidth = video.videoWidth;
-          lastHeight = video.videoHeight;
+          requestAnimationFrame(() => finish());
         }
+        window.setTimeout(finish, 120);
+      });
+
+    await nextFrame();
+
+    // Wait until the intrinsic size stops changing (rotation applied) before
+    // the canvas switches from the frozen frame to the live feed.
+    let stable = 0;
+    let lastWidth = video.videoWidth;
+    let lastHeight = video.videoHeight;
+    const deadline = performance.now() + 600;
+    while (stable < 2 && performance.now() < deadline) {
+      await nextFrame();
+      if (video.videoWidth === lastWidth && video.videoHeight === lastHeight) {
+        stable += 1;
+      } else {
+        stable = 0;
+        lastWidth = video.videoWidth;
+        lastHeight = video.videoHeight;
       }
-    },
-    [videoFor],
-  );
+    }
+
+    liveRef.current = true;
+  }, []);
 
   const discover = useCallback(async (): Promise<ICameraCandidate[]> => {
     const list = await enumerateRearCameras();
@@ -184,34 +221,28 @@ const useCamera = () => {
 
   const restore = useCallback(
     async (camera: ICameraCandidate, currentRequest: number) => {
-      const fromSlot = slotRef.current;
-      const toSlot: Slot = fromSlot === 'a' ? 'b' : 'a';
-
       try {
         const stream = await requestCameraStream(camera);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        await attachTo(toSlot, stream);
+        await attach(stream);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
         streamRef.current = stream;
-        slotRef.current = toSlot;
-        setActiveSlot(toSlot);
-        setFreezeFrame(null);
         commitActive(camera);
         setScreen('live');
         fitVideo();
       } catch {
-        // Keep the frozen frame from before the failed switch.
+        liveRef.current = true;
       } finally {
         showNotice(SWITCH_FAILED);
       }
     },
-    [attachTo, commitActive, fitVideo, showNotice],
+    [attach, commitActive, fitVideo, showNotice],
   );
 
   const start = useCallback(
@@ -222,21 +253,15 @@ const useCamera = () => {
     ) => {
       const currentRequest = ++requestRef.current;
       const previousCamera = previousOverride ?? activeCameraRef.current;
-      const fromSlot = slotRef.current;
-      const toSlot: Slot = isSwitch ? (fromSlot === 'a' ? 'b' : 'a') : fromSlot;
-
       setError(null);
       setSwitching(isSwitch);
-      if (!isSwitch) {
-        setScreen('loading');
-        setFreezeFrame(null);
-      }
+      if (!isSwitch) setScreen('loading');
 
       if (isSwitch) {
-        // Capture the current frame first so it can cover the loading window,
-        // then release the active lens. The visible video element's srcObject is
-        // never reassigned, so the preview stays full-screen throughout.
-        setFreezeFrame(captureFrame());
+        // Freeze the current frame, then release the active lens. The canvas
+        // keeps painting the frozen frame until the next stream is settled.
+        liveRef.current = false;
+        await freezeCurrentFrame();
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
@@ -247,17 +272,12 @@ const useCamera = () => {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
-
-        await attachTo(toSlot, stream);
+        await attach(stream);
         if (currentRequest !== requestRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
-
         streamRef.current = stream;
-        slotRef.current = toSlot;
-        setActiveSlot(toSlot);
-        setFreezeFrame(null);
         commitActive(camera);
         setScreen('live');
         fitVideo();
@@ -267,15 +287,15 @@ const useCamera = () => {
           await restore(previousCamera, currentRequest);
           return;
         }
+        liveRef.current = true;
         const kind = await classifyCameraError(cause);
         setError(messages[kind]);
         setScreen(isSwitch ? 'live' : 'error');
-        setFreezeFrame(null);
       } finally {
         if (currentRequest === requestRef.current) setSwitching(false);
       }
     },
-    [attachTo, captureFrame, commitActive, fitVideo, restore],
+    [attach, commitActive, fitVideo, freezeCurrentFrame, restore],
   );
 
   const open = useCallback(async () => {
@@ -328,19 +348,17 @@ const useCamera = () => {
 
   return {
     activeCamera,
-    activeSlot,
     cameras,
+    canvasRef,
     debug,
     error,
-    freezeFrame,
     notice,
     open,
     retry,
     screen,
     selectCamera,
     switching,
-    videoARef,
-    videoBRef,
+    videoRef,
   };
 };
 

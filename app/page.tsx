@@ -26,19 +26,17 @@ const haptic = () => {
 const Home = () => {
   const {
     activeCamera,
-    activeSlot,
     cameras,
+    canvasRef,
     debug,
     error,
-    freezeFrame,
     notice,
     open,
     retry,
     screen,
     selectCamera,
     switching,
-    videoARef,
-    videoBRef,
+    videoRef,
   } = useCamera();
   const [showPicker, setShowPicker] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -149,28 +147,18 @@ const Home = () => {
       onTouchEnd={onTouchEnd}
     >
       <video
-        ref={videoARef}
-        autoPlay
-        muted
-        playsInline
-        aria-label="ภาพจากกล้องหลัง"
-        className={`absolute inset-0 block h-full w-full object-cover object-center transition-opacity duration-150 ${activeSlot === 'a' ? 'opacity-100' : 'opacity-0'}`}
-      />
-      <video
-        ref={videoBRef}
+        ref={videoRef}
         autoPlay
         muted
         playsInline
         aria-hidden="true"
-        className={`absolute inset-0 block h-full w-full object-cover object-center transition-opacity duration-150 ${activeSlot === 'b' ? 'opacity-100' : 'opacity-0'}`}
+        className="pointer-events-none absolute inset-0 block h-full w-full object-cover opacity-0"
       />
-      {freezeFrame && (
-        <div
-          className="absolute inset-0 z-[1] h-full w-full bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${freezeFrame})` }}
-          aria-hidden="true"
-        />
-      )}
+      <canvas
+        ref={canvasRef}
+        aria-label="ภาพจากกล้องหลัง"
+        className="absolute inset-0 block h-full w-full bg-black"
+      />
       <div className="pointer-events-none absolute inset-[15%_10%_35%] z-[2] opacity-[0.42]" aria-hidden="true">
         <i className="absolute left-0 top-0 size-[22px] border-l border-t border-white" />
         <i className="absolute right-0 top-0 size-[22px] border-r border-t border-white" />
