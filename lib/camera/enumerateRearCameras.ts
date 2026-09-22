@@ -9,7 +9,6 @@
  */
 
 import { FOCUSABLE_MODES, type ICameraCapabilities, type ICameraSettings } from './capabilities';
-import { classifyLens } from './lens';
 import type { ICameraCandidate } from './types';
 
 const ensurePermission = async (): Promise<void> => {
@@ -49,7 +48,6 @@ const probeCamera = async (
     return {
       deviceId,
       label,
-      lensKind: classifyLens(capabilities.zoom ?? null),
       hasAutofocus: focusModes.some((mode) => FOCUSABLE_MODES.includes(mode)),
       maxResolution: maxWidth * maxHeight,
       capabilities,
